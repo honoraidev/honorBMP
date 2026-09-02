@@ -14,7 +14,7 @@ export default async function ReviewListPage({ searchParams }: { searchParams: P
   const waitingStatus = role === "primary" ? "self" : "primary";
 
   return (
-    <div className="max-w-4xl mx-auto space-y-5">
+    <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-navy">{role === "primary" ? "待我初評" : "待我複評"}</h1>
         <p className="text-sm text-gray-500 mt-1">共 {forms.length} 位人員</p>

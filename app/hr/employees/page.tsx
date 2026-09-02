@@ -21,7 +21,7 @@ export default async function HrEmployeesPage({
   const reviewerOptions = [...employees].sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-navy">人員管理</h1>
@@ -45,7 +45,7 @@ export default async function HrEmployeesPage({
       <form action={createEmployeeAction} className="card p-5 space-y-4">
         <h2 className="font-bold text-navy">新增人員</h2>
 
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <Field label="姓名" required>
             <input name="name" required className="input" placeholder="例：王小明" />
           </Field>
