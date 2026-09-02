@@ -1,0 +1,31 @@
+services:
+  web:
+    build: .
+    image: chengshi-appraisal:latest
+    container_name: chengshi-appraisal
+    restart: unless-stopped
+    network_mode: service:ts # 流量走 ts 這個容器的網路，不用另外開 3000 對外
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env # DB 連線設定放這裡（見 .env）
+    depends_on:
+      - ts
+
+  ts:
+    image: tailscale/tailscale:latest
+    container_name: chengshi-appraisal-ts
+    hostname: chengshi-appraisal-system # 這個名字會出現在 Tailscale 機器清單，獨立於 honor-ai-news 等其他機器
+    environment:
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+    env_file:
+      - .env # TS_AUTHKEY 放這裡
+    volumes:
+      - ./ts-data:/var/lib/tailscale
+      - ./ts-serve.json:/config/serve.json:ro
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    restart: unless-stopped

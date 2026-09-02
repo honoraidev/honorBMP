@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+.vercel
+*.log
+.git
+.gitignore
+Dockerfile
+.dockerignore
+docker-compose.yml
+.env
+data
+ts-data
+README.md
+README-NAS.md
