@@ -43,6 +43,9 @@ export default async function HrDashboardPage() {
           <p className="text-sm text-gray-500 mt-1">{cycle.label}・共 {forms.length} 份考核表</p>
         </div>
         <div className="flex gap-2">
+          <Link href="/hr/employees" className="btn btn-outline">
+            人員管理
+          </Link>
           <Link href="/hr/cycle" className="btn btn-outline">
             考核週期設定
           </Link>

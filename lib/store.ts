@@ -442,6 +442,9 @@ interface Store {
   cycle: AppraisalCycle;
   forms: AppraisalForm[];
   employeeOverrides: Record<string, EmployeeOverride>;
+  /** People added at runtime by HR (not in the seed). Persisted so they
+   *  survive restarts; merged into `employees` on hydrate. */
+  newEmployees: Employee[];
 }
 
 function freshStore(): Store {
@@ -453,7 +456,16 @@ function freshStore(): Store {
     cycle: { ...CYCLE, phases: { ...CYCLE.phases } },
     forms: seedForms(),
     employeeOverrides: {},
+    newEmployees: [],
   };
+}
+
+/** Merge HR-created employees back into a fresh store during hydrate. */
+function mergeNewEmployees(store: Store, list: Employee[]) {
+  store.newEmployees = list.map((e) => ({ ...e }));
+  for (const e of store.newEmployees) {
+    if (!store.employees.some((x) => x.id === e.id)) store.employees.push({ ...e });
+  }
 }
 
 function applyEmployeeOverrides(store: Store, overrides: Record<string, EmployeeOverride>) {
@@ -475,6 +487,100 @@ export function updateEmployeeProfile(employeeId: string, patch: EmployeeOverrid
   if (patch.password !== undefined) emp.password = patch.password;
   store.employeeOverrides[employeeId] = { ...store.employeeOverrides[employeeId], ...patch };
   persist();
+  persistEmployee(emp);
+}
+
+export interface NewEmployeeInput {
+  name: string;
+  employeeNo: string;
+  title: string;
+  departmentId: string;
+  primaryReviewerId: string | null;
+  secondaryReviewerId: string | null;
+  isHrAdmin?: boolean;
+  approverCompanyIds?: string[];
+  password?: string;
+}
+
+/** True for a person added at runtime by HR (id prefix `emp-`), not from the seed. */
+export function isHrCreatedEmployee(id: string): boolean {
+  return id.startsWith("emp-");
+}
+
+/**
+ * Create a new employee (HR only). Company is derived from the chosen department.
+ * Also seeds this cycle's appraisal form so the person enters the workflow.
+ * Persists immediately.
+ */
+export function createEmployee(input: NewEmployeeInput): { employee: Employee } | { error: string } {
+  const store = getStore();
+  const name = input.name.trim();
+  const employeeNo = input.employeeNo.trim().toUpperCase();
+  const title = input.title.trim();
+
+  if (!name || !employeeNo || !title) return { error: "請完整填寫姓名、工號與職稱" };
+
+  const dept = store.departments.find((d) => d.id === input.departmentId);
+  if (!dept) return { error: "請選擇部門" };
+
+  if (store.employees.some((e) => e.employeeNo.toUpperCase() === employeeNo)) {
+    return { error: `工號 ${employeeNo} 已存在` };
+  }
+  if (store.employees.some((e) => e.name === name)) {
+    return { error: `系統已有同名人員「${name}」，請確認是否重複建立` };
+  }
+
+  const validReviewer = (rid: string | null) =>
+    !rid || store.employees.some((e) => e.id === rid);
+  if (!validReviewer(input.primaryReviewerId) || !validReviewer(input.secondaryReviewerId)) {
+    return { error: "指定的主管不存在" };
+  }
+
+  const approverCompanyIds = (input.approverCompanyIds ?? []).filter((cid) =>
+    store.companies.some((c) => c.id === cid)
+  );
+
+  const id = `emp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const employee: Employee = {
+    id,
+    name,
+    title,
+    employeeNo,
+    password: input.password?.trim() || "1",
+    companyId: dept.companyId,
+    departmentId: dept.id,
+    hireDate: "－",
+    primaryReviewerId: input.primaryReviewerId || null,
+    secondaryReviewerId: input.secondaryReviewerId || null,
+    ...(input.isHrAdmin ? { isHrAdmin: true } : {}),
+    ...(approverCompanyIds.length ? { approverCompanyIds } : {}),
+  };
+
+  store.employees.push(employee);
+  store.newEmployees.push({ ...employee });
+
+  store.forms.push({
+    id: `f-${id}`,
+    cycleId: store.cycle.id,
+    employeeId: id,
+    goalItems: defaultGoalItems(),
+    fixedItems: defaultFixedItems(),
+    bonusMalus: 0,
+    selfFeedbackGrowth: "",
+    selfFeedbackNextYear: "",
+    primaryComment: "",
+    secondaryComment: "",
+    secondaryDevAssessment: "",
+    rankingTier: null,
+    rankingOverrideReason: "",
+    status: "goal_setting",
+    signatures: {},
+    history: [{ at: new Date().toISOString(), actor: "人資", action: "建立人員與考核表" }],
+  });
+
+  persist();
+  persistEmployee(employee);
+  return { employee };
 }
 
 declare global {
@@ -492,11 +598,18 @@ export function getStore(): Store {
 export function resetStore() {
   globalThis.__APPRAISAL_STORE__ = freshStore();
   persist();
+  reseedEmployeesTable().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("[store] personnel reseed failed:", err);
+  });
 }
 
 // ---------- Persistence (optional, MariaDB/MySQL) ----------
-// Only workflow state (forms + cycle) is stored. Org data (companies /
-// departments / employees) always comes from the seed in this file.
+// Workflow state (forms + cycle) is stored as a JSON blob in
+// `chengshi_appraisal_state`. Personnel data lives as real rows in
+// `chengshi_employees` (seeded once from the array in this file, then the DB
+// is the source of truth — HR edits/creates write straight through).
+// Companies / departments still come from the seed in this file.
 
 const STATE_ID = 1;
 
@@ -511,23 +624,153 @@ async function ensureTable() {
   );
 }
 
+// ---------- Personnel table (chengshi_employees) ----------
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+async function ensureEmployeesTable() {
+  const { getPool } = await import("./db");
+  await getPool().query(
+    `CREATE TABLE IF NOT EXISTS chengshi_employees (
+       id                    VARCHAR(64) PRIMARY KEY,
+       name                  VARCHAR(100) NOT NULL,
+       title                 VARCHAR(100) NOT NULL,
+       employee_no           VARCHAR(50) NOT NULL,
+       password              VARCHAR(255),
+       avatar_url            LONGTEXT,
+       company_id            VARCHAR(20) NOT NULL,
+       department_id         VARCHAR(20) NOT NULL,
+       hire_date             VARCHAR(20),
+       primary_reviewer_id   VARCHAR(64),
+       secondary_reviewer_id VARCHAR(64),
+       is_hr_admin           TINYINT(1) NOT NULL DEFAULT 0,
+       approver_company_ids  VARCHAR(255),
+       source                VARCHAR(10) NOT NULL DEFAULT 'seed',
+       updated_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+       UNIQUE KEY uq_employee_no (employee_no)
+     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+}
+
+function rowToEmployee(r: any): Employee {
+  return {
+    id: r.id,
+    name: r.name,
+    title: r.title,
+    employeeNo: r.employee_no,
+    password: r.password ?? "1",
+    ...(r.avatar_url ? { avatarUrl: r.avatar_url as string } : {}),
+    companyId: r.company_id,
+    departmentId: r.department_id,
+    hireDate: r.hire_date ?? "－",
+    primaryReviewerId: r.primary_reviewer_id || null,
+    secondaryReviewerId: r.secondary_reviewer_id || null,
+    ...(r.is_hr_admin ? { isHrAdmin: true } : {}),
+    ...(r.approver_company_ids
+      ? { approverCompanyIds: String(r.approver_company_ids).split(",").filter(Boolean) }
+      : {}),
+  };
+}
+
+function employeeParams(e: Employee, source: "seed" | "hr"): any[] {
+  return [
+    e.id,
+    e.name,
+    e.title,
+    e.employeeNo,
+    e.password ?? "1",
+    e.avatarUrl ?? null,
+    e.companyId,
+    e.departmentId,
+    e.hireDate ?? "－",
+    e.primaryReviewerId ?? null,
+    e.secondaryReviewerId ?? null,
+    e.isHrAdmin ? 1 : 0,
+    e.approverCompanyIds?.length ? e.approverCompanyIds.join(",") : null,
+    source,
+  ];
+}
+
+async function upsertEmployeeRow(e: Employee, source: "seed" | "hr"): Promise<void> {
+  const { dbEnabled, getPool } = await import("./db");
+  if (!dbEnabled()) return;
+  await ensureEmployeesTable();
+  await getPool().query(
+    `INSERT INTO chengshi_employees
+       (id, name, title, employee_no, password, avatar_url, company_id, department_id,
+        hire_date, primary_reviewer_id, secondary_reviewer_id, is_hr_admin,
+        approver_company_ids, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       name = VALUES(name), title = VALUES(title), employee_no = VALUES(employee_no),
+       password = VALUES(password), avatar_url = VALUES(avatar_url),
+       company_id = VALUES(company_id), department_id = VALUES(department_id),
+       hire_date = VALUES(hire_date), primary_reviewer_id = VALUES(primary_reviewer_id),
+       secondary_reviewer_id = VALUES(secondary_reviewer_id), is_hr_admin = VALUES(is_hr_admin),
+       approver_company_ids = VALUES(approver_company_ids)`,
+    employeeParams(e, source)
+  );
+}
+
+/** Fire-and-forget personnel-row save; safe from sync code. No-op without DB env. */
+export function persistEmployee(emp: Employee): void {
+  upsertEmployeeRow(emp, isHrCreatedEmployee(emp.id) ? "hr" : "seed").catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("[store] persist employee failed:", err);
+  });
+}
+
+/** Wipe and re-seed the personnel table from the file seed (used by demo reset). */
+export async function reseedEmployeesTable(): Promise<void> {
+  const { dbEnabled, getPool } = await import("./db");
+  if (!dbEnabled()) return;
+  await ensureEmployeesTable();
+  await getPool().query("DELETE FROM chengshi_employees");
+  for (const e of EMPLOYEES) await upsertEmployeeRow(e, "seed");
+}
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export async function hydrateStoreFromDb(): Promise<void> {
   const { dbEnabled, getPool } = await import("./db");
   if (!dbEnabled()) return;
   try {
     await ensureTable();
+
+    const base = freshStore();
+
+    // Personnel: seed the table once, then treat the DB as source of truth.
+    try {
+      await ensureEmployeesTable();
+      const [erows] = (await getPool().query(
+        "SELECT * FROM chengshi_employees"
+      )) as unknown as [Record<string, unknown>[], unknown];
+      if (erows.length === 0) {
+        for (const e of EMPLOYEES) await upsertEmployeeRow(e, "seed");
+        base.employees = EMPLOYEES.map((e) => ({ ...e }));
+      } else {
+        base.employees = erows.map(rowToEmployee);
+      }
+      // eslint-disable-next-line no-console
+      console.log(`[store] personnel loaded from DB (${base.employees.length} people)`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[store] personnel table hydrate failed, using file seed:", err);
+    }
+
     const [rows] = (await getPool().query(
       "SELECT data FROM chengshi_appraisal_state WHERE id = ?",
       [STATE_ID]
     )) as unknown as [{ data: string }[], unknown];
 
-    const base = freshStore();
     if (rows.length > 0) {
       const saved = JSON.parse(rows[0].data) as {
         forms?: AppraisalForm[];
         cycle?: AppraisalCycle;
         employeeOverrides?: Record<string, EmployeeOverride>;
+        newEmployees?: Employee[];
       };
+      if (saved.newEmployees) mergeNewEmployees(base, saved.newEmployees);
       if (saved.forms) base.forms = saved.forms;
       if (saved.cycle) base.cycle = saved.cycle;
       if (saved.employeeOverrides) applyEmployeeOverrides(base, saved.employeeOverrides);
@@ -551,6 +794,7 @@ export async function persistStore(): Promise<void> {
     forms: store.forms,
     cycle: store.cycle,
     employeeOverrides: store.employeeOverrides,
+    newEmployees: store.newEmployees,
   });
   await ensureTable();
   await getPool().query(
