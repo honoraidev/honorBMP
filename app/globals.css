@@ -140,7 +140,9 @@ a {
 
 /* App top bar */
 .app-topbar {
-  overflow: hidden;
+  /* no overflow:hidden here — it would clip dropdowns (e.g. NotificationBell)
+     that need to render below the header. ::before/::after already use
+     inset:0 so they stay within bounds without clipping. */
   background-color: #00a4a3;
   background-image:
     linear-gradient(110deg, #00a4a3 0%, #00a4a3 24%, #06a09a 52%, #2bc0b4 100%);
