@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getCurrentEmployee } from "@/lib/auth";
-import { getManual, getSection } from "@/lib/handbook";
+import { getManual, getSection, publicEntry } from "@/lib/handbook";
+import { canEditHandbook, getHandbookEntries } from "@/lib/store";
 import AttachmentList from "@/components/AttachmentList";
+import HandbookEditor from "@/components/HandbookEditor";
 
 export default async function ManualPage({
   params,
@@ -21,6 +23,9 @@ export default async function ManualPage({
 
   const section = getSection(manual, s);
   if (!section) notFound();
+
+  const entries = getHandbookEntries(manual.slug, section.slug).map(publicEntry);
+  const canEdit = canEditHandbook(user);
 
   return (
     <div className="space-y-5">
@@ -79,6 +84,13 @@ export default async function ManualPage({
               <AttachmentList items={section.attachments} />
             </div>
           )}
+
+          <HandbookEditor
+            manualSlug={manual.slug}
+            sectionSlug={section.slug}
+            entries={entries}
+            canEdit={canEdit}
+          />
         </div>
       </div>
     </div>

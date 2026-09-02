@@ -11,6 +11,7 @@ import {
   RankingTier,
   FormStatus,
 } from "./types";
+import type { HandbookEntry } from "./handbook";
 
 // ---------- Seed data ----------
 // Real 丞石集團 organizational data, transcribed from the group's org charts
@@ -445,6 +446,9 @@ interface Store {
   /** People added at runtime by HR (not in the seed). Persisted so they
    *  survive restarts; merged into `employees` on hydrate. */
   newEmployees: Employee[];
+  /** Manager-added handbook content (notes + uploaded files). Persisted in its
+   *  own table; file bytes live on the object only in no-DB mode. */
+  handbookEntries: HandbookEntry[];
 }
 
 function freshStore(): Store {
@@ -457,6 +461,7 @@ function freshStore(): Store {
     forms: seedForms(),
     employeeOverrides: {},
     newEmployees: [],
+    handbookEntries: [],
   };
 }
 
@@ -731,6 +736,83 @@ export async function reseedEmployeesTable(): Promise<void> {
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+// ---------- Handbook entries (chengshi_handbook_entries) ----------
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+async function ensureHandbookTable() {
+  const { getPool } = await import("./db");
+  await getPool().query(
+    `CREATE TABLE IF NOT EXISTS chengshi_handbook_entries (
+       id            VARCHAR(64) PRIMARY KEY,
+       manual_slug   VARCHAR(64) NOT NULL,
+       section_slug  VARCHAR(64) NOT NULL,
+       kind          VARCHAR(10) NOT NULL,
+       text          LONGTEXT,
+       file_name     VARCHAR(255),
+       file_mime     VARCHAR(120),
+       file_size     VARCHAR(30),
+       file_data     LONGTEXT,
+       created_by    VARCHAR(100) NOT NULL,
+       created_by_id VARCHAR(64) NOT NULL,
+       created_at    VARCHAR(40) NOT NULL,
+       KEY idx_section (manual_slug, section_slug)
+     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+}
+
+function rowToHandbookEntry(r: any, withData = false): HandbookEntry {
+  return {
+    id: r.id,
+    manualSlug: r.manual_slug,
+    sectionSlug: r.section_slug,
+    kind: r.kind,
+    ...(r.text ? { text: r.text as string } : {}),
+    ...(r.file_name ? { fileName: r.file_name as string } : {}),
+    ...(r.file_mime ? { fileMime: r.file_mime as string } : {}),
+    ...(r.file_size ? { fileSize: r.file_size as string } : {}),
+    ...(withData && r.file_data ? { fileData: r.file_data as string } : {}),
+    createdBy: r.created_by,
+    createdById: r.created_by_id,
+    createdAt: r.created_at,
+  };
+}
+
+async function insertHandbookRow(e: HandbookEntry): Promise<void> {
+  const { dbEnabled, getPool } = await import("./db");
+  if (!dbEnabled()) return;
+  await ensureHandbookTable();
+  await getPool().query(
+    `INSERT INTO chengshi_handbook_entries
+       (id, manual_slug, section_slug, kind, text, file_name, file_mime, file_size,
+        file_data, created_by, created_by_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      e.id,
+      e.manualSlug,
+      e.sectionSlug,
+      e.kind,
+      e.text ?? null,
+      e.fileName ?? null,
+      e.fileMime ?? null,
+      e.fileSize ?? null,
+      e.fileData ?? null,
+      e.createdBy,
+      e.createdById,
+      e.createdAt,
+    ]
+  );
+}
+
+async function deleteHandbookRow(id: string): Promise<void> {
+  const { dbEnabled, getPool } = await import("./db");
+  if (!dbEnabled()) return;
+  await ensureHandbookTable();
+  await getPool().query("DELETE FROM chengshi_handbook_entries WHERE id = ?", [id]);
+}
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export async function hydrateStoreFromDb(): Promise<void> {
   const { dbEnabled, getPool } = await import("./db");
   if (!dbEnabled()) return;
@@ -756,6 +838,22 @@ export async function hydrateStoreFromDb(): Promise<void> {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[store] personnel table hydrate failed, using file seed:", err);
+    }
+
+    // Manager-added handbook content (metadata only; file bytes stay in the DB).
+    try {
+      await ensureHandbookTable();
+      const [hrows] = (await getPool().query(
+        `SELECT id, manual_slug, section_slug, kind, text, file_name, file_mime, file_size,
+                created_by, created_by_id, created_at
+           FROM chengshi_handbook_entries ORDER BY created_at ASC`
+      )) as unknown as [Record<string, unknown>[], unknown];
+      base.handbookEntries = hrows.map((r) => rowToHandbookEntry(r));
+      // eslint-disable-next-line no-console
+      console.log(`[store] handbook entries loaded from DB (${base.handbookEntries.length})`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[store] handbook table hydrate failed:", err);
     }
 
     const [rows] = (await getPool().query(
@@ -839,6 +937,148 @@ export function formsAsPrimary(employeeId: string): AppraisalForm[] {
 
 export function formsAsSecondary(employeeId: string): AppraisalForm[] {
   return getStore().forms.filter((f) => getEmployee(f.employeeId)?.secondaryReviewerId === employeeId);
+}
+
+// ---------- Handbook: manager-added content ----------
+
+/** True if this person may add notes / files to the handbook: HR admins,
+ *  approvers, or anyone who is a primary/secondary reviewer of at least one
+ *  employee (i.e. a line manager). */
+export function canEditHandbook(user: Employee): boolean {
+  if (user.isHrAdmin || user.approverCompanyIds?.length) return true;
+  return getStore().employees.some(
+    (e) => e.primaryReviewerId === user.id || e.secondaryReviewerId === user.id
+  );
+}
+
+export function getHandbookEntries(manualSlug: string, sectionSlug: string): HandbookEntry[] {
+  return getStore().handbookEntries.filter(
+    (e) => e.manualSlug === manualSlug && e.sectionSlug === sectionSlug
+  );
+}
+
+function newHandbookId() {
+  return `hb-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function addHandbookNote(input: {
+  manualSlug: string;
+  sectionSlug: string;
+  text: string;
+  user: Employee;
+}): { entry: HandbookEntry } | { error: string } {
+  const text = input.text.trim();
+  if (!text) return { error: "請輸入內容" };
+  if (text.length > 4000) return { error: "內容過長（上限 4000 字）" };
+  const entry: HandbookEntry = {
+    id: newHandbookId(),
+    manualSlug: input.manualSlug,
+    sectionSlug: input.sectionSlug,
+    kind: "note",
+    text,
+    createdBy: input.user.name,
+    createdById: input.user.id,
+    createdAt: new Date().toISOString(),
+  };
+  getStore().handbookEntries.push(entry);
+  insertHandbookRow(entry).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("[store] handbook note persist failed:", err);
+  });
+  return { entry };
+}
+
+const MAX_HANDBOOK_FILE_BYTES = 10 * 1024 * 1024;
+
+export function addHandbookFile(input: {
+  manualSlug: string;
+  sectionSlug: string;
+  fileName: string;
+  fileMime: string;
+  dataBase64: string;
+  user: Employee;
+}): { entry: HandbookEntry } | { error: string } {
+  const name = input.fileName.trim();
+  if (!name) return { error: "檔名無效" };
+  const bytes = Math.floor((input.dataBase64.length * 3) / 4);
+  if (bytes === 0) return { error: "檔案是空的" };
+  if (bytes > MAX_HANDBOOK_FILE_BYTES) return { error: "檔案過大（上限 10MB）" };
+
+  const entry: HandbookEntry = {
+    id: newHandbookId(),
+    manualSlug: input.manualSlug,
+    sectionSlug: input.sectionSlug,
+    kind: "file",
+    fileName: name,
+    fileMime: input.fileMime || "application/octet-stream",
+    fileSize: formatBytes(bytes),
+    fileData: input.dataBase64,
+    createdBy: input.user.name,
+    createdById: input.user.id,
+    createdAt: new Date().toISOString(),
+  };
+  getStore().handbookEntries.push(entry);
+  insertHandbookRow(entry).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("[store] handbook file persist failed:", err);
+  });
+  return { entry };
+}
+
+/** Returns the file bytes for a handbook file entry, reading from the DB when
+ *  enabled (metadata-only copy in memory) and falling back to the in-memory
+ *  copy otherwise. */
+export async function getHandbookFile(
+  id: string
+): Promise<{ name: string; mime: string; buffer: Buffer } | null> {
+  const local = getStore().handbookEntries.find((e) => e.id === id && e.kind === "file");
+  if (local?.fileData) {
+    return {
+      name: local.fileName || "file",
+      mime: local.fileMime || "application/octet-stream",
+      buffer: Buffer.from(local.fileData, "base64"),
+    };
+  }
+  const { dbEnabled, getPool } = await import("./db");
+  if (!dbEnabled()) return null;
+  try {
+    await ensureHandbookTable();
+    const [rows] = (await getPool().query(
+      "SELECT file_name, file_mime, file_data FROM chengshi_handbook_entries WHERE id = ? AND kind = 'file'",
+      [id]
+    )) as unknown as [{ file_name: string; file_mime: string; file_data: string }[], unknown];
+    if (!rows.length || !rows[0].file_data) return null;
+    return {
+      name: rows[0].file_name || "file",
+      mime: rows[0].file_mime || "application/octet-stream",
+      buffer: Buffer.from(rows[0].file_data, "base64"),
+    };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[store] handbook file read failed:", err);
+    return null;
+  }
+}
+
+export function deleteHandbookEntry(id: string, user: Employee): { ok: true } | { error: string } {
+  const store = getStore();
+  const entry = store.handbookEntries.find((e) => e.id === id);
+  if (!entry) return { error: "找不到這筆內容" };
+  if (entry.createdById !== user.id && !user.isHrAdmin) {
+    return { error: "只能刪除自己新增的內容" };
+  }
+  store.handbookEntries = store.handbookEntries.filter((e) => e.id !== id);
+  deleteHandbookRow(id).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error("[store] handbook entry delete failed:", err);
+  });
+  return { ok: true };
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)}MB`;
 }
 
 export function allForms(): AppraisalForm[] {

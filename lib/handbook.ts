@@ -26,6 +26,38 @@ export interface HandbookSection {
   internalLinks?: { label: string; href: string }[];
 }
 
+/**
+ * A piece of content added at runtime by a manager on top of the static
+ * handbook above — either a text note or an uploaded file. Stored in the DB
+ * (table `chengshi_handbook_entries`); file bytes are streamed separately via
+ * `/handbook/file/<id>` and are not kept on this object when it travels to the
+ * client.
+ */
+export interface HandbookEntry {
+  id: string;
+  manualSlug: string;
+  sectionSlug: string;
+  kind: "note" | "file";
+  /** kind === "note" */
+  text?: string;
+  /** kind === "file" */
+  fileName?: string;
+  fileMime?: string;
+  fileSize?: string;
+  /** server-only: base64 of the file; never sent to the client */
+  fileData?: string;
+  createdBy: string;
+  createdById: string;
+  createdAt: string;
+}
+
+/** Strip server-only fields before handing an entry to a client component. */
+export function publicEntry(e: HandbookEntry): HandbookEntry {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { fileData, ...rest } = e;
+  return rest;
+}
+
 export interface HandbookManual {
   slug: string;
   title: string;
