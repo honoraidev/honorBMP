@@ -39,6 +39,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       ...(user.approverCompanyIds?.length
         ? [{ href: "/approve", label: "核決中心", icon: "approve", group: "管理" } as SidebarItem]
         : []),
+      { href: "/handbook", label: "員工手冊", icon: "book", group: "資源" },
     ];
   }
 

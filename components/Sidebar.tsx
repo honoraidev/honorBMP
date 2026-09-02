@@ -19,7 +19,8 @@ type IconName =
   | "secondary"
   | "board"
   | "cycle"
-  | "approve";
+  | "approve"
+  | "book";
 
 const ICONS: Record<IconName, ReactNode> = {
   home: <path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5" />,
@@ -57,6 +58,12 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <path d="M4 20h16" />
       <path d="M14.5 4.5a2.1 2.1 0 0 1 3 3L9 16l-4 1 1-4 8.5-8.5z" />
+    </>
+  ),
+  book: (
+    <>
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z" />
+      <path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 20.5z" />
     </>
   ),
 };

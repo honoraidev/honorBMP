@@ -11,6 +11,7 @@ import {
   STATUS_LABEL,
 } from "@/lib/store";
 import StatusBadge from "@/components/StatusBadge";
+import { getRemindersForUser, reminderCountLabel } from "@/lib/reminders";
 
 export default async function HomePage() {
   const user = await getCurrentEmployee();
@@ -22,9 +23,57 @@ export default async function HomePage() {
   const myForm = getFormByEmployee(user.id);
   const primary = formsAsPrimary(user.id);
   const secondary = formsAsSecondary(user.id);
+  const reminders = getRemindersForUser(user);
+  const topLevel = reminders.some((r) => r.level === "overdue")
+    ? "overdue"
+    : reminders.some((r) => r.level === "due_soon")
+    ? "due_soon"
+    : "upcoming";
 
   return (
     <div className="space-y-6">
+      {reminders.length > 0 && (
+        <div
+          className={`card p-5 border-l-4 ${
+            topLevel === "overdue"
+              ? "border-l-red-500"
+              : topLevel === "due_soon"
+              ? "border-l-amber-500"
+              : "border-l-teal"
+          }`}
+        >
+          <h2 className="font-bold text-navy mb-3 flex items-center gap-2">
+            <svg viewBox="0 0 24 24" className="h-5 w-5 text-teal" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+            </svg>
+            考核待辦提醒（{reminders.length}）
+          </h2>
+          <ul className="space-y-2">
+            {reminders.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <span
+                  className={`badge ${
+                    r.level === "overdue"
+                      ? "bg-red-100 text-red-700"
+                      : r.level === "due_soon"
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-teal/10 text-teal"
+                  }`}
+                >
+                  {reminderCountLabel(r.daysLeft)}
+                </span>
+                <span className="font-semibold">{r.title}</span>
+                <span className="text-gray-500">{r.detail}</span>
+                <span className="text-xs text-gray-400">截止 {r.dueDate}</span>
+                <Link href={r.href} className="text-navy font-semibold hover:underline text-xs ml-auto">
+                  前往處理 →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="card relative overflow-hidden p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <span className="absolute inset-x-0 bottom-0 h-1.5 bg-gradient-to-r from-teal to-navy" />
         <div>

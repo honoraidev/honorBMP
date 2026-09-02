@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { Employee } from "@/lib/types";
 import { formsAsPrimary, formsAsSecondary, getFormByEmployee } from "@/lib/store";
+import { getRemindersForUser } from "@/lib/reminders";
+import NotificationBell from "@/components/NotificationBell";
 import { logout } from "@/app/login/actions";
 
 export default function TopNav({ user }: { user: Employee | null }) {
   if (!user) return null;
+  const reminders = getRemindersForUser(user);
   return (
     <header className="app-topbar sticky top-0 z-40 text-white">
       <div className="relative z-10 w-full pl-2 pr-4 md:pl-3 md:pr-8 lg:pl-4 lg:pr-12 h-16 flex items-center justify-between gap-4">
@@ -16,6 +19,7 @@ export default function TopNav({ user }: { user: Employee | null }) {
         {user && (
           <nav className="flex items-center gap-3 text-sm">
             <NavLinks user={user} />
+            <NotificationBell reminders={reminders} />
             <div className="hidden md:flex items-center gap-2.5 rounded-full bg-white/10 ring-1 ring-white/15 pl-1.5 pr-3.5 py-1">
               <span className="grid h-7 w-7 place-items-center rounded-full bg-white/90 text-teal text-xs font-bold shadow-sm">
                 {user.name.slice(0, 1)}

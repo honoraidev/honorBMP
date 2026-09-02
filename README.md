@@ -69,4 +69,14 @@ lib/
 1. 資料庫：目前用伺服器記憶體暫存，重啟即重置。
 2. 登入驗證：目前無真實帳密驗證。
 3. 員工資料：工號／到職日為佔位資料，尚未串接正式人資系統。
-4. 尚未實作：獎金試算、歷史考核查詢、到期提醒通知（皆為 PRD 中規劃的後續功能，本次雛形聚焦在核心流程打通）。
+4. 尚未實作：獎金試算、歷史考核查詢（PRD 中規劃的後續功能）。
+
+## 已加入的延伸功能
+
+- **員工手冊／文件閱覽**（`/handbook`）：章節式制度手冊，支援 PDF 附件線上預覽與下載。手冊內容在 `lib/handbook.ts`，PDF 檔放 `public/handbook/`。
+- **到期提醒通知**：依考核週期時程與個人待辦，於首頁橫幅與右上角鈴鐺（`components/NotificationBell.tsx`）顯示「尚有 N 天／已逾期」。邏輯在 `lib/reminders.ts`，純站內提醒、不寄信。
+
+## 開發環境注意事項
+
+- 請在**本機磁碟**（或直接在 NAS 上 SSH）執行 `npm run dev` / `npm run build`。若把專案放在 SMB 網路磁碟（例如 Windows 掛 `\\NAS\...`）上執行，Next 16 的 Turbopack 會因無法建立 junction point 而崩潰。
+- 萬一必須在網路磁碟上執行，改用 `npm run dev:webpack` / `npm run build:webpack` 繞過 Turbopack（仍會較慢，且 `.next` 在網路磁碟上偶有讀取不到剛寫入檔案的問題）。
