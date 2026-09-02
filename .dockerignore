@@ -13,3 +13,7 @@ data
 ts-data
 README.md
 README-NAS.md
+
+# Synology 自動產生的縮圖/索引目錄，會被 Next.js 誤判成 @ 開頭的並行路由
+**/@eaDir
+**/#recycle
