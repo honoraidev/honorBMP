@@ -59,6 +59,7 @@ function fileToAvatarDataUrl(file: File): Promise<string> {
 
 export default function ProfileMenu({ user }: { user: ProfileUser }) {
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -69,10 +70,20 @@ export default function ProfileMenu({ user }: { user: ProfileUser }) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        setMenuOpen(false);
+      }
+    }
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setMenuOpen(false);
     }
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClickOutside);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClickOutside);
+    };
   }, []);
 
   async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -112,10 +123,12 @@ export default function ProfileMenu({ user }: { user: ProfileUser }) {
   }
 
   return (
-    <div ref={ref}>
+    <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => setMenuOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
         className="flex items-center gap-2.5 rounded-full bg-white/10 ring-1 ring-white/15 pl-1.5 pr-3.5 py-1 hover:bg-white/20 transition"
       >
         <Avatar url={avatarUrl} className="h-7 w-7 rounded-full shadow-sm" />
@@ -124,6 +137,25 @@ export default function ProfileMenu({ user }: { user: ProfileUser }) {
           <span className="text-white/70 text-[11px]">{user.title}</span>
         </span>
       </button>
+
+      {menuOpen && (
+        <div
+          role="menu"
+          className="absolute right-0 mt-2 w-44 rounded-xl bg-white py-1.5 shadow-xl ring-1 ring-black/5 text-sm text-gray-700 z-[60]"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setMenuOpen(false);
+              setOpen(true);
+            }}
+            className="flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-gray-50"
+          >
+            編輯個人資料
+          </button>
+        </div>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-10">
