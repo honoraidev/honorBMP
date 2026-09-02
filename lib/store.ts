@@ -433,22 +433,48 @@ function seedForms(): AppraisalForm[] {
 
 // ---------- In-memory store (demo only — resets on cold start / redeploy) ----------
 
+type EmployeeOverride = { avatarUrl?: string; password?: string };
+
 interface Store {
   companies: Company[];
   departments: Department[];
   employees: Employee[];
   cycle: AppraisalCycle;
   forms: AppraisalForm[];
+  employeeOverrides: Record<string, EmployeeOverride>;
 }
 
 function freshStore(): Store {
   return {
     companies: COMPANIES,
     departments: DEPARTMENTS,
-    employees: EMPLOYEES,
+    // clone so profile edits (avatar/password) never mutate the shared seed array
+    employees: EMPLOYEES.map((e) => ({ ...e })),
     cycle: { ...CYCLE, phases: { ...CYCLE.phases } },
     forms: seedForms(),
+    employeeOverrides: {},
   };
+}
+
+function applyEmployeeOverrides(store: Store, overrides: Record<string, EmployeeOverride>) {
+  store.employeeOverrides = overrides;
+  for (const [id, patch] of Object.entries(overrides)) {
+    const emp = store.employees.find((e) => e.id === id);
+    if (!emp) continue;
+    if (patch.avatarUrl !== undefined) emp.avatarUrl = patch.avatarUrl;
+    if (patch.password !== undefined) emp.password = patch.password;
+  }
+}
+
+/** Update one employee's avatar and/or password; persists immediately. */
+export function updateEmployeeProfile(employeeId: string, patch: EmployeeOverride) {
+  const store = getStore();
+  const emp = store.employees.find((e) => e.id === employeeId);
+  if (!emp) return;
+  if (patch.avatarUrl !== undefined) emp.avatarUrl = patch.avatarUrl;
+  if (patch.password !== undefined) emp.password = patch.password;
+  store.employeeOverrides[employeeId] = { ...store.employeeOverrides[employeeId], ...patch };
+  persist();
 }
 
 declare global {
@@ -497,9 +523,14 @@ export async function hydrateStoreFromDb(): Promise<void> {
 
     const base = freshStore();
     if (rows.length > 0) {
-      const saved = JSON.parse(rows[0].data) as { forms?: AppraisalForm[]; cycle?: AppraisalCycle };
+      const saved = JSON.parse(rows[0].data) as {
+        forms?: AppraisalForm[];
+        cycle?: AppraisalCycle;
+        employeeOverrides?: Record<string, EmployeeOverride>;
+      };
       if (saved.forms) base.forms = saved.forms;
       if (saved.cycle) base.cycle = saved.cycle;
+      if (saved.employeeOverrides) applyEmployeeOverrides(base, saved.employeeOverrides);
     }
     globalThis.__APPRAISAL_STORE__ = base;
 
@@ -516,7 +547,11 @@ export async function persistStore(): Promise<void> {
   const { dbEnabled, getPool } = await import("./db");
   if (!dbEnabled()) return;
   const store = getStore();
-  const data = JSON.stringify({ forms: store.forms, cycle: store.cycle });
+  const data = JSON.stringify({
+    forms: store.forms,
+    cycle: store.cycle,
+    employeeOverrides: store.employeeOverrides,
+  });
   await ensureTable();
   await getPool().query(
     "INSERT INTO chengshi_appraisal_state (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data)",

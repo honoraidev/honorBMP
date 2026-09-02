@@ -17,6 +17,8 @@ export interface Employee {
   title: string;
   employeeNo: string;
   password?: string;
+  /** Data URL (base64) of the user's uploaded avatar; absent = show default person icon. */
+  avatarUrl?: string;
   companyId: string;
   departmentId: string;
   hireDate: string;

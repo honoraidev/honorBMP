@@ -3,6 +3,7 @@ import { Employee } from "@/lib/types";
 import { formsAsPrimary, formsAsSecondary, getFormByEmployee } from "@/lib/store";
 import { getRemindersForUser } from "@/lib/reminders";
 import NotificationBell from "@/components/NotificationBell";
+import ProfileMenu from "@/components/ProfileMenu";
 import { logout } from "@/app/login/actions";
 
 export default function TopNav({ user }: { user: Employee | null }) {
@@ -20,15 +21,7 @@ export default function TopNav({ user }: { user: Employee | null }) {
           <nav className="flex items-center gap-3 text-sm">
             <NavLinks user={user} />
             <NotificationBell reminders={reminders} />
-            <div className="hidden md:flex items-center gap-2.5 rounded-full bg-white/10 ring-1 ring-white/15 pl-1.5 pr-3.5 py-1">
-              <span className="grid h-7 w-7 place-items-center rounded-full bg-white/90 text-teal text-xs font-bold shadow-sm">
-                {user.name.slice(0, 1)}
-              </span>
-              <span className="flex flex-col items-start leading-tight">
-                <span className="font-semibold">{user.name}</span>
-                <span className="text-white/70 text-[11px]">{user.title}</span>
-              </span>
-            </div>
+            <ProfileMenu user={{ id: user.id, name: user.name, title: user.title, avatarUrl: user.avatarUrl }} />
             <form action={logout}>
               <button
                 className="inline-flex items-center gap-1.5 rounded-full border border-white/35 bg-white/5 px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-white/15 hover:border-white/60 transition"
