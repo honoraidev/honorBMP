@@ -19,6 +19,7 @@ type IconName =
   | "secondary"
   | "board"
   | "cycle"
+  | "people"
   | "approve"
   | "book";
 
@@ -52,6 +53,13 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <rect x="3" y="4.5" width="18" height="16" rx="2" />
       <path d="M3 9h18M8 3v3M16 3v3" />
+    </>
+  ),
+  people: (
+    <>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+      <path d="M16 6a3 3 0 0 1 0 6M17 15c2.5.4 4.5 2.4 4.5 5" />
     </>
   ),
   approve: (
@@ -90,6 +98,18 @@ export default function Sidebar({ items }: { items: SidebarItem[] }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const current = search.toString() ? `${pathname}?${search.toString()}` : pathname;
+
+  // The active item is the single most-specific match: an item whose href is a
+  // prefix of the current path only wins if no other item is a longer prefix.
+  // (Otherwise "/hr" would stay highlighted while on "/hr/cycle".)
+  const activeHref = items
+    .filter(
+      (it) =>
+        it.href === current ||
+        it.href === pathname ||
+        (it.href !== "/" && pathname.startsWith(`${it.href}/`))
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
@@ -169,9 +189,7 @@ export default function Sidebar({ items }: { items: SidebarItem[] }) {
             )}
             <div className="space-y-1">
               {groupItems.map((it) => {
-                const active =
-                  it.href === current ||
-                  (it.href !== "/" && current.startsWith(it.href));
+                const active = it.href === activeHref;
                 return (
                   <Link
                     key={it.href}
