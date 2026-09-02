@@ -8,5 +8,8 @@
         "/": { "Proxy": "http://127.0.0.1:3000" }
       }
     }
+  },
+  "AllowFunnel": {
+    "${TS_CERT_DOMAIN}:443": true
   }
 }
