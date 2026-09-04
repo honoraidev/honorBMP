@@ -461,6 +461,8 @@ interface Store {
   formTemplates: FormTemplate[];
   /** Per-department default reviewer config (overrides individual employee settings). */
   deptReviewConfigs: DepartmentReviewConfig[];
+  /** IDs of employees soft-deleted by HR; filtered out on every hydrate. */
+  deletedEmployeeIds: string[];
 }
 
 function freshStore(): Store {
@@ -476,6 +478,7 @@ function freshStore(): Store {
     handbookEntries: [],
     formTemplates: [],
     deptReviewConfigs: [],
+    deletedEmployeeIds: [],
   };
 }
 
@@ -744,6 +747,30 @@ export function persistEmployee(emp: Employee): void {
   });
 }
 
+async function deleteEmployeeRow(id: string): Promise<void> {
+  const { dbEnabled, getPool } = await import("./db");
+  if (!dbEnabled()) return;
+  await ensureEmployeesTable();
+  await getPool().query("DELETE FROM chengshi_employees WHERE id = ?", [id]);
+}
+
+/**
+ * Delete an employee (HR only). Removes from memory store + DB.
+ * Their appraisal form is kept for archive. Returns error string if not allowed.
+ */
+export function deleteEmployee(id: string): { ok: true } | { error: string } {
+  const store = getStore();
+  const idx = store.employees.findIndex((e) => e.id === id);
+  if (idx < 0) return { error: "找不到員工" };
+  store.employees.splice(idx, 1);
+  // Also remove from newEmployees list
+  store.newEmployees = store.newEmployees.filter((e) => e.id !== id);
+  if (!store.deletedEmployeeIds.includes(id)) store.deletedEmployeeIds.push(id);
+  persist();
+  deleteEmployeeRow(id).catch((err) => console.error("[store] delete employee row failed:", err));
+  return { ok: true };
+}
+
 /** Wipe and re-seed the personnel table from the file seed (used by demo reset). */
 export async function reseedEmployeesTable(): Promise<void> {
   const { dbEnabled, getPool } = await import("./db");
@@ -888,6 +915,7 @@ export async function hydrateStoreFromDb(): Promise<void> {
         newEmployees?: Employee[];
         formTemplates?: FormTemplate[];
         deptReviewConfigs?: DepartmentReviewConfig[];
+        deletedEmployeeIds?: string[];
       };
       if (saved.newEmployees) mergeNewEmployees(base, saved.newEmployees);
       if (saved.forms) {
@@ -904,6 +932,12 @@ export async function hydrateStoreFromDb(): Promise<void> {
       if (saved.employeeOverrides) applyEmployeeOverrides(base, saved.employeeOverrides);
       if (saved.formTemplates) base.formTemplates = saved.formTemplates;
       if (saved.deptReviewConfigs) base.deptReviewConfigs = saved.deptReviewConfigs;
+      if (saved.deletedEmployeeIds) {
+        base.deletedEmployeeIds = saved.deletedEmployeeIds;
+        // Filter deleted employees out of base.employees
+        base.employees = base.employees.filter((e) => !saved.deletedEmployeeIds!.includes(e.id));
+        base.newEmployees = base.newEmployees.filter((e) => !saved.deletedEmployeeIds!.includes(e.id));
+      }
     }
     globalThis.__APPRAISAL_STORE__ = base;
 
@@ -927,6 +961,7 @@ export async function persistStore(): Promise<void> {
     newEmployees: store.newEmployees,
     formTemplates: store.formTemplates,
     deptReviewConfigs: store.deptReviewConfigs,
+    deletedEmployeeIds: store.deletedEmployeeIds,
   });
   await ensureTable();
   await getPool().query(
