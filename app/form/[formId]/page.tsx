@@ -29,13 +29,17 @@ import {
   approveForm,
   uploadAttachment,
   removeAttachment,
+  updateGoalItemsAction,
+  addGoalItemAction,
+  deleteGoalItemAction,
 } from "../actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
-  self_incomplete: "無法送出：請完成全部9項評分，且第1–4項配分總和須為75分。",
-  primary_incomplete: "無法送出：請完成全部9項初評評分。",
+  self_incomplete: "無法送出：請完成全部評分，且個人目標配分總和須為75分。",
+  primary_incomplete: "無法送出：請完成全部初評評分。",
   secondary_incomplete: "無法送出：請選擇排名等第後再送出。",
   return_reason_required: "退回前請填寫退回原因。",
+  cannot_delete_all_goals: "至少須保留一個目標題目。",
   attachment_too_large: "附件過大（上限 10MB）。",
   attachment_invalid: "附件無效，請重新選擇。",
   no_permission: "您沒有執行此操作的權限。",
@@ -62,10 +66,10 @@ export default async function FormDetailPage({
   searchParams,
 }: {
   params: Promise<{ formId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; customized?: string }>;
 }) {
   const { formId } = await params;
-  const { error } = await searchParams;
+  const { error, customized } = await searchParams;
   const user = await getCurrentEmployee();
   if (!user) redirect("/login");
 
@@ -114,15 +118,135 @@ export default async function FormDetailPage({
   const mainContent = (
     <>
       {/* Section: goal items 1-4 */}
-      <section className="card p-5">
-        <SectionTitle title="考核評分（一）個人化目標項目" hint="第1–4項，與初評主管討論後填寫，合計占75分" />
+      <section className="card p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-3">
+          <div>
+            <SectionTitle title="考核評分（一）個人化目標項目" hint="與初評主管討論後填寫，合計占75分" />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${weightSum === 75 ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
+              配分合計：{weightSum} / 75 分 {weightSum === 75 ? "✓ 正確" : "⚠️ 建議調整為75分"}
+            </span>
+          </div>
+        </div>
+
+        {/* 主管/人資專屬：客製化題目與配分權重工具 */}
+        {ctx.canCustomizeForm && (
+          <details className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <summary className="text-sm font-bold text-navy cursor-pointer select-none flex items-center justify-between">
+              <span>⚙️ 主管客製化題目與分數配分（點此展開管理題目）</span>
+              <span className="text-xs text-teal font-normal">主管/人資權限可用</span>
+            </summary>
+
+            <div className="mt-4 space-y-4 pt-3 border-t border-slate-200">
+              <p className="text-xs text-gray-500">
+                您可以在此直接為此員工修改題目名稱、達標定義、調整配分權重（分數），或自由增減題目數量。
+              </p>
+
+              {/* 批次修改配分與題目表單 */}
+              <form action={updateGoalItemsAction} className="space-y-3">
+                <input type="hidden" name="formId" value={form.id} />
+                <div className="space-y-3">
+                  {form.goalItems.map((item) => (
+                    <div key={item.order} className="bg-white border border-gray-200 rounded-md p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-navy">第 {item.order} 題目設定</span>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-600 font-medium">配分分數：</label>
+                          <input
+                            type="number"
+                            name={`goal_${item.order}_weight`}
+                            defaultValue={item.weight}
+                            min={1}
+                            max={75}
+                            className="input w-20 text-center text-xs py-1"
+                          />
+                          <span className="text-xs text-gray-400">分</span>
+                        </div>
+                      </div>
+                      <input
+                        name={`goal_${item.order}_title`}
+                        defaultValue={item.title}
+                        placeholder={`題目標題（例：季度專案達標率）`}
+                        className="input text-xs w-full"
+                        required
+                      />
+                      <textarea
+                        name={`goal_${item.order}_desc`}
+                        defaultValue={item.standardDesc}
+                        rows={2}
+                        placeholder="達標定義與衡量指標（例：交付品質無缺失，如期達成）"
+                        className="textarea text-xs w-full"
+                        required
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-xs text-gray-500 font-mono">
+                    目前各題配分合計：<strong>{weightSum}</strong> 分（目標 75 分）
+                  </span>
+                  <button type="submit" className="btn btn-primary text-xs py-1.5 px-4">
+                    💾 儲存題目與配分修改
+                  </button>
+                </div>
+              </form>
+
+              {/* 新增一題 & 刪除題目操作列 */}
+              <div className="border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <form action={addGoalItemAction} className="flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="formId" value={form.id} />
+                  <input
+                    name="title"
+                    placeholder="新增題目名稱"
+                    className="input text-xs py-1 px-2.5 w-40"
+                    required
+                  />
+                  <input
+                    type="number"
+                    name="weight"
+                    defaultValue="15"
+                    min={1}
+                    max={75}
+                    placeholder="配分"
+                    className="input text-xs py-1 px-2 w-16 text-center"
+                    required
+                  />
+                  <span className="text-xs text-gray-400">分</span>
+                  <button type="submit" className="btn btn-outline text-xs py-1 px-3">
+                    ➕ 新增一題目
+                  </button>
+                </form>
+
+                {form.goalItems.length > 1 && (
+                  <form action={deleteGoalItemAction} className="flex items-center gap-2">
+                    <input type="hidden" name="formId" value={form.id} />
+                    <select name="order" className="select text-xs py-1 px-2 w-32">
+                      {form.goalItems.map((g) => (
+                        <option key={g.order} value={g.order}>
+                          刪除第 {g.order} 題
+                        </option>
+                      ))}
+                    </select>
+                    <button type="submit" className="btn btn-outline !text-red-600 !border-red-200 hover:!bg-red-50 text-xs py-1 px-3">
+                      🗑️ 刪除
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          </details>
+        )}
+
+        {/* 題目評分列表 */}
         <div className="space-y-4">
           {form.goalItems.map((item) => (
             <div key={item.order} className="border border-gray-200 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="badge bg-navy/10 text-navy">第 {item.order} 項</span>
-                <span className="text-xs text-gray-400">
-                  配分 {item.weight} 分・得分 {goalItemScore(item)} 分
+                <span className="badge bg-navy/10 text-navy font-semibold">第 {item.order} 項</span>
+                <span className="text-xs text-gray-500 font-mono">
+                  配分 <strong>{item.weight}</strong> 分・目前實得 <strong>{goalItemScore(item)}</strong> 分
                 </span>
               </div>
               {ctx.canEditSelf ? (
@@ -130,16 +254,16 @@ export default async function FormDetailPage({
                   <input className="input" name={`goal${item.order}Title`} defaultValue={item.title} placeholder="項目標題（如：計價請款）" required />
                   <textarea className="textarea" name={`goal${item.order}Desc`} defaultValue={item.standardDesc} rows={2} placeholder="達標定義（請具體化、數據化，例如：資料準時繳交，無需修正）" required />
                   <div className="flex items-center gap-2 text-sm">
-                    <label className="text-gray-500">配分占比</label>
+                    <label className="text-gray-500">配分分數</label>
                     <input className="input w-24" type="number" name={`goal${item.order}Weight`} defaultValue={item.weight} min={0} max={75} />
-                    <span className="text-gray-400 text-xs">分（第1–4項合計須為75分，目前合計 {weightSum} 分）</span>
+                    <span className="text-gray-400 text-xs">分（目前所有題目合計 {weightSum} 分）</span>
                   </div>
                   <TierRadioGroup name={`goal${item.order}Tier`} defaultValue={item.selfTier} />
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  <p className="font-medium text-sm">{item.title || <span className="text-gray-400">（未填寫）</span>}</p>
-                  <p className="text-xs text-gray-500">{item.standardDesc}</p>
+                  <p className="font-medium text-sm text-gray-900">{item.title || <span className="text-gray-400">（未填寫標題）</span>}</p>
+                  <p className="text-xs text-gray-500">{item.standardDesc || <span className="text-gray-400">（未設定達標定義）</span>}</p>
                   <div className="flex flex-wrap gap-3 mt-1 items-start">
                     <ScoreTag label="自評" tier={item.selfTier} />
                     {ctx.canEditPrimary ? (
@@ -204,19 +328,25 @@ export default async function FormDetailPage({
             />
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="text-gray-500">加減分：{form.bonusMalus > 0 ? `+${form.bonusMalus}` : form.bonusMalus} 分</span>
-            {form.rankingTier ? (
-              <span className="badge bg-teal/10 text-teal">{RANKING_TIER_LABEL_MAP[form.rankingTier]}</span>
-            ) : (
-              <span className="text-gray-400">尚未核定等第</span>
+          <div className="text-sm space-y-2 text-gray-600">
+            <p>加減分：{form.bonusMalus > 0 ? `+${form.bonusMalus}` : form.bonusMalus} 分</p>
+            <p>
+              排名等第：
+              {form.rankingTier ? (
+                <span className="font-semibold text-navy ml-1">{RANKING_TIER_LABEL_MAP[form.rankingTier]}</span>
+              ) : (
+                <span className="text-gray-400 ml-1">（尚未核定）</span>
+              )}
+            </p>
+            {form.rankingOverrideReason && (
+              <p className="text-xs text-gray-500">等第備註／突破限制原因：{form.rankingOverrideReason}</p>
             )}
           </div>
         )}
       </section>
 
-      {/* Section: narrative feedback */}
-      <section className="card p-5 space-y-5">
+      {/* Section: feedback */}
+      <section className="card p-5 space-y-4">
         <SectionTitle title="意見回饋與評核意見" />
 
         <div>
@@ -273,7 +403,7 @@ export default async function FormDetailPage({
       {/* Section: 自訂欄位 */}
       {allCustomFields.length > 0 && (
         <section className="card p-5 space-y-4">
-          <SectionTitle title="自訂評核欄位" hint="由表單管理員設定的額外評核項目" />
+          <SectionTitle title="自訂評核欄位與題目" hint="由主管或人資設定的專屬評核項目" />
           {allCustomFields.map((field) => {
             const isEditable = currentStageForEdit === field.targetStage;
             const savedValue = form.customFieldValues?.[field.id] ?? "";
@@ -282,6 +412,11 @@ export default async function FormDetailPage({
                 <div className="flex items-center gap-2 mb-2">
                   <span className="font-medium text-sm">{field.label}</span>
                   {field.required && <span className="text-red-500 text-xs">*必填</span>}
+                  {field.type === "score" && (
+                    <span className="badge bg-amber-50 text-amber-700 border border-amber-200 text-xs">
+                      評分配分題（滿分 {field.maxScore ?? 10} 分）
+                    </span>
+                  )}
                   <span className="text-xs text-gray-400 ml-auto">
                     {field.targetStage === "self" ? "員工填寫" : field.targetStage === "primary" ? "初評主管填寫" : "複評主管填寫"}
                   </span>
@@ -297,6 +432,12 @@ export default async function FormDetailPage({
                     )}
                     {field.type === "number" && (
                       <input className="input w-40" type="number" name={`custom_${field.id}`} defaultValue={savedValue} required={field.required} />
+                    )}
+                    {field.type === "score" && (
+                      <div className="flex items-center gap-2">
+                        <input className="input w-32" type="number" min={0} max={field.maxScore ?? 100} name={`custom_${field.id}`} defaultValue={savedValue} required={field.required} placeholder={`0 ~ ${field.maxScore ?? 10}`} />
+                        <span className="text-xs text-gray-400">分（滿分 {field.maxScore ?? 10} 分）</span>
+                      </div>
                     )}
                     {field.type === "select" && (
                       <select className="select" name={`custom_${field.id}`} defaultValue={savedValue} required={field.required}>
@@ -341,6 +482,11 @@ export default async function FormDetailPage({
 
   return (
     <div className="space-y-6">
+      {customized && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
+          <span>✅ 目標題目與分數配分已成功更新！</span>
+        </div>
+      )}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
           {ERROR_MESSAGES[error] || "操作失敗，請檢查表單內容。"}
@@ -509,79 +655,74 @@ export default async function FormDetailPage({
             .slice()
             .reverse()
             .map((h, i) => (
-              <li key={i} className="flex gap-2 flex-wrap">
-                <span className="shrink-0 text-gray-400">{new Date(h.at).toLocaleString("zh-TW")}</span>
-                <span className="font-medium text-gray-600">{h.actor}</span>
-                <span>{h.action}</span>
+              <li key={i}>
+                <span className="text-gray-400">{new Date(h.at).toLocaleString("zh-TW")}</span>
+                {" · "}
+                <span className="font-medium text-gray-700">{h.actor}</span>
+                {" · "}
+                {h.action}
                 {h.note && <span className="text-gray-400">（{h.note}）</span>}
               </li>
             ))}
         </ul>
       </details>
 
-      {/* 匯出區塊 — 所有有檢視權限的人皆可操作 */}
-      <section className="card p-5">
-        <div className="flex items-center justify-between mb-3">
+      {/* 獨立醒目的匯出區塊 */}
+      <section className="card p-5 border-2 border-navy/20 bg-slate-50/50">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h2 className="font-bold text-navy">匯出評核表</h2>
-            <p className="text-xs text-gray-400 mt-0.5">可將此評核表匯出為 PDF 或 Word 檔案</p>
+            <h2 className="font-bold text-navy text-base">📄 匯出評核表</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              本評核表支援隨時列印或另存為 PDF，以及下載 Word 檔（.docx）進行紙本歸檔或呈閱。
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <a
+              href={`/api/form/${form.id}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-primary text-sm flex items-center gap-1.5"
+            >
+              <span>🖨️</span> 列印 / 儲存 PDF
+            </a>
+            <a
+              href={`/api/form/${form.id}/docx`}
+              download
+              className="btn btn-outline text-sm flex items-center gap-1.5"
+            >
+              <span>📥</span> 匯出 Word (.docx)
+            </a>
           </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <a
-            href={`/api/form/${formId}/pdf`}
-            target="_blank"
-            className="btn btn-primary flex items-center gap-2"
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <path d="M14 2v6h6M9 13h6M9 17h6M9 9h1" />
-            </svg>
-            列印 / 儲存 PDF
-          </a>
-          <a
-            href={`/api/form/${formId}/docx`}
-            className="btn btn-outline flex items-center gap-2"
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            匯出 Word (.docx)
-          </a>
-        </div>
-        <p className="text-xs text-gray-400 mt-3">
-          PDF：點擊後開新分頁 → 瀏覽器列印 → 「儲存為 PDF」<br />
-          Word：直接下載 .docx，可用 Microsoft Word 或 LibreOffice 開啟
-        </p>
       </section>
     </div>
   );
 }
 
-
-// ---------- Sub-components ----------
-
 function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="mb-4">
-      <h2 className="font-bold text-navy">{title}</h2>
-      {hint && <p className="text-xs text-gray-400">{hint}</p>}
+    <div className="mb-3">
+      <h2 className="font-bold text-navy text-base">{title}</h2>
+      {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
     </div>
   );
 }
 
 function FieldLabel({ text }: { text: string }) {
-  return <p className="text-xs text-gray-500">{text}</p>;
+  return <p className="text-xs text-gray-500 mb-1">{text}</p>;
 }
 
-function ScoreTag({ label, tier }: { label: string; tier: string | null }) {
-  const map: Record<string, string> = { exceed: "超標準", meet: "達目標", below: "未達標" };
+function ScoreTag({ label, tier }: { label: string; tier: string | null | undefined }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    exceed: { label: "超標準", cls: "bg-teal/10 text-teal" },
+    meet: { label: "達目標", cls: "bg-blue-50 text-blue-700" },
+    below: { label: "未達標", cls: "bg-red-50 text-red-700" },
+  };
+  const t = tier ? map[tier] : null;
   return (
     <span className="text-xs">
-      <span className="text-gray-400">{label}：</span>
-      <span className="font-medium">{tier ? map[tier] : "—"}</span>
+      <span className="text-gray-400 mr-1">{label}：</span>
+      {t ? <span className={`badge ${t.cls}`}>{t.label}</span> : <span className="text-gray-300">尚未評分</span>}
     </span>
   );
 }
@@ -591,8 +732,8 @@ function AttachmentUploadForm({ formId }: { formId: string }) {
   const nameId = `att-name-${formId}`;
   const mimeId = `att-mime-${formId}`;
   const dataId = `att-data-${formId}`;
-  const labelId = `att-label-${formId}`;
   const fileInputId = `att-file-${formId}`;
+  const labelId = `att-label-${formId}`;
 
   return (
     <form action={uploadAttachment} className="border border-dashed border-gray-200 rounded-lg p-4 space-y-3">
@@ -601,50 +742,50 @@ function AttachmentUploadForm({ formId }: { formId: string }) {
       <input type="hidden" name="fileMime" id={mimeId} />
       <input type="hidden" name="fileData" id={dataId} />
 
-      <p className="text-xs text-gray-500">上傳佐證附件（PDF、圖片、Excel 等，上限 10MB）</p>
+      <p className="text-xs font-semibold text-gray-600">上傳新附件（支援 PDF、Word、圖片等，上限 10MB）</p>
 
-      <div className="flex items-center gap-3">
-        <label className="cursor-pointer btn btn-outline text-xs" htmlFor={fileInputId}>
-          選擇檔案
-        </label>
-        <span className="text-xs text-gray-400" id={labelId}>未選擇任何檔案</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="file"
+          id={fileInputId}
+          className="text-xs text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-navy/10 file:text-navy hover:file:bg-navy/20 cursor-pointer"
+        />
+        <span id={labelId} className="text-xs text-gray-400">尚未選擇檔案</span>
+        <button type="submit" className="btn btn-outline text-xs">
+          確認上傳
+        </button>
       </div>
 
-      {/* Invisible real file input — JS handles conversion */}
-      <input
-        type="file"
-        id={fileInputId}
-        className="sr-only"
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.zip"
-      />
-
-      {/* Client-side script: file → base64 */}
-      {/* eslint-disable-next-line @next/next/no-sync-scripts */}
       <script
         dangerouslySetInnerHTML={{
-          __html: `(function(){
-  var el=document.getElementById(${JSON.stringify(fileInputId)});
-  if(!el)return;
-  el.addEventListener('change',function(e){
-    var f=e.target.files[0];
-    if(!f)return;
-    document.getElementById(${JSON.stringify(labelId)}).textContent=f.name;
-    document.getElementById(${JSON.stringify(nameId)}).value=f.name;
-    document.getElementById(${JSON.stringify(mimeId)}).value=f.type||'application/octet-stream';
-    var r=new FileReader();
-    r.onload=function(ev){
-      var b64=ev.target.result.split(',')[1];
-      document.getElementById(${JSON.stringify(dataId)}).value=b64;
-    };
-    r.readAsDataURL(f);
-  });
-})();`,
+          __html: `
+            (function() {
+              var input = document.getElementById("${fileInputId}");
+              if (!input) return;
+              input.addEventListener("change", function(e) {
+                var file = e.target.files && e.target.files[0];
+                if (!file) return;
+                var label = document.getElementById("${labelId}");
+                if (label) label.textContent = file.name + " (" + (file.size/1024).toFixed(1) + " KB)";
+                var nameEl = document.getElementById("${nameId}");
+                var mimeEl = document.getElementById("${mimeId}");
+                var dataEl = document.getElementById("${dataId}");
+                if (nameEl) nameEl.value = file.name;
+                if (mimeEl) mimeEl.value = file.type || "application/octet-stream";
+                var reader = new FileReader();
+                reader.onload = function(evt) {
+                  var res = evt.target && evt.target.result;
+                  if (typeof res === "string" && dataEl) {
+                    var base64 = res.split(",")[1] || "";
+                    dataEl.value = base64;
+                  }
+                };
+                reader.readAsDataURL(file);
+              });
+            })();
+          `,
         }}
       />
-
-      <button type="submit" className="btn btn-primary text-xs">
-        上傳附件
-      </button>
     </form>
   );
 }

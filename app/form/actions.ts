@@ -321,3 +321,89 @@ export async function removeAttachment(formData: FormData) {
   revalidatePath(`/form/${formId}`);
   redirect(`/form/${formId}`);
 }
+
+/** 主管/人資客製化表單目標題目與配分 */
+export async function updateGoalItemsAction(formData: FormData) {
+  const user = await requireUser();
+  const formId = String(formData.get("formId"));
+  const form = getForm(formId);
+  if (!form) return;
+  const employee = getEmployee(form.employeeId);
+  if (!employee) return;
+  const ctx = getViewerContext(user, employee, form);
+  if (!ctx.canCustomizeForm) return;
+
+  const newGoalItems: GoalItem[] = form.goalItems.map((item) => {
+    const title = String(formData.get(`goal_${item.order}_title`) ?? item.title);
+    const standardDesc = String(formData.get(`goal_${item.order}_desc`) ?? item.standardDesc);
+    const weightRaw = formData.get(`goal_${item.order}_weight`);
+    const weight = weightRaw !== null ? Math.max(1, Number(weightRaw) || item.weight) : item.weight;
+    return {
+      ...item,
+      title,
+      standardDesc,
+      weight,
+    };
+  });
+
+  form.goalItems = newGoalItems;
+  pushHistory(form, user.name, "客製化調整目標題目與配分");
+  revalidatePath(`/form/${formId}`);
+  redirect(`/form/${formId}?customized=1`);
+}
+
+/** 主管/人資新增目標題目 */
+export async function addGoalItemAction(formData: FormData) {
+  const user = await requireUser();
+  const formId = String(formData.get("formId"));
+  const form = getForm(formId);
+  if (!form) return;
+  const employee = getEmployee(form.employeeId);
+  if (!employee) return;
+  const ctx = getViewerContext(user, employee, form);
+  if (!ctx.canCustomizeForm) return;
+
+  const title = String(formData.get("title") || "").trim();
+  const standardDesc = String(formData.get("standardDesc") || "").trim();
+  const weight = Number(formData.get("weight") || 15);
+
+  const nextOrder = form.goalItems.length + 1;
+  form.goalItems.push({
+    order: nextOrder,
+    title,
+    standardDesc,
+    weight,
+    selfTier: null,
+    primaryTier: null,
+  });
+
+  pushHistory(form, user.name, `新增目標題目第 ${nextOrder} 項「${title || "未命名"}」（配分 ${weight} 分）`);
+  revalidatePath(`/form/${formId}`);
+  redirect(`/form/${formId}?customized=1`);
+}
+
+/** 主管/人資刪除目標題目 */
+export async function deleteGoalItemAction(formData: FormData) {
+  const user = await requireUser();
+  const formId = String(formData.get("formId"));
+  const order = Number(formData.get("order"));
+  const form = getForm(formId);
+  if (!form) return;
+  const employee = getEmployee(form.employeeId);
+  if (!employee) return;
+  const ctx = getViewerContext(user, employee, form);
+  if (!ctx.canCustomizeForm) return;
+
+  if (form.goalItems.length <= 1) {
+    redirect(`/form/${formId}?error=cannot_delete_all_goals`);
+  }
+
+  form.goalItems = form.goalItems
+    .filter((g) => g.order !== order)
+    .map((g, idx) => ({ ...g, order: idx + 1 }));
+
+  pushHistory(form, user.name, `刪除目標題目第 ${order} 項並重編排序`);
+  revalidatePath(`/form/${formId}`);
+  redirect(`/form/${formId}?customized=1`);
+}
+

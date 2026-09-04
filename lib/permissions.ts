@@ -18,6 +18,16 @@ export interface ViewerContext {
   canView: boolean;
   /** 可上傳主管附件（初評或複評主管） */
   canUploadAttachment: boolean;
+  /** 可客製化題目與配分權重（主管、人資、或自評設定階段之員工） */
+  canCustomizeForm: boolean;
+}
+
+export function isUserDeptManager(user: Employee): boolean {
+  if (user.isHrAdmin) return true;
+  const store = getStore();
+  return store.employees.some(
+    (e) => e.primaryReviewerId === user.id || e.secondaryReviewerId === user.id
+  );
 }
 
 export function getViewerContext(user: Employee, employee: Employee, form: AppraisalForm): ViewerContext {
@@ -44,6 +54,13 @@ export function getViewerContext(user: Employee, employee: Employee, form: Appra
     (isSecondary && form.status === "primary") ||
     (isHr && form.status === "secondary") ||
     (isApprover && form.status === "hr_review");
+
+  // 主管（初評、複評）、人資，或是目標設定階段的受評人皆可客製化題目與配分
+  const canCustomizeForm =
+    isPrimary ||
+    isSecondary ||
+    isHr ||
+    (isOwner && form.status === "goal_setting");
 
   // 可上傳附件：初評中或複評中，對應的主管可上傳
   const canUploadAttachment =
@@ -80,6 +97,7 @@ export function getViewerContext(user: Employee, employee: Employee, form: Appra
     canReturn,
     canView,
     canUploadAttachment,
+    canCustomizeForm,
   };
 }
 

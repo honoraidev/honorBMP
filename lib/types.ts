@@ -107,6 +107,7 @@ export type CustomFieldType =
   | "text"       // 單行文字
   | "textarea"   // 多行文字
   | "number"     // 數字
+  | "score"      // 評分配分題（設定滿分）
   | "select"     // 下拉選單
   | "radio";     // 單選
 
@@ -120,6 +121,8 @@ export interface CustomFieldDef {
   required: boolean;
   /** 誰填寫這個欄位 */
   targetStage: CustomFieldStage;
+  /** 評分題的最高配分（預設 10 或 20） */
+  maxScore?: number;
   /** select / radio 的選項列表 */
   options?: string[];
   /** 輔助說明文字 */
