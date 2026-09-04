@@ -10,6 +10,9 @@ import {
   FIXED_ITEM_DEFS,
   RankingTier,
   FormStatus,
+  FormAttachment,
+  FormTemplate,
+  DepartmentReviewConfig,
 } from "./types";
 import type { HandbookEntry } from "./handbook";
 
@@ -411,6 +414,7 @@ function defaultFixedItems(): FixedItem[] {
 }
 
 function seedForms(): AppraisalForm[] {
+  const now = new Date().toISOString();
   // Every employee gets a form except the group's top chairman (no one reviews him).
   return EMPLOYEES.filter((e) => e.id !== TOP_CHAIRMAN_ID).map((e) => ({
     id: `f-${e.id}`,
@@ -428,7 +432,11 @@ function seedForms(): AppraisalForm[] {
     rankingOverrideReason: "",
     status: "goal_setting" as FormStatus,
     signatures: {},
-    history: [{ at: new Date().toISOString(), actor: "系統", action: "建立考核表" }],
+    history: [{ at: now, actor: "系統", action: "建立考核表" }],
+    attachments: [],
+    customFieldValues: {},
+    rejectHistory: [],
+    lastStatusChangedAt: now,
   }));
 }
 
@@ -449,6 +457,10 @@ interface Store {
   /** Manager-added handbook content (notes + uploaded files). Persisted in its
    *  own table; file bytes live on the object only in no-DB mode. */
   handbookEntries: HandbookEntry[];
+  /** HR-managed custom form templates (extra fields appended to appraisal forms). */
+  formTemplates: FormTemplate[];
+  /** Per-department default reviewer config (overrides individual employee settings). */
+  deptReviewConfigs: DepartmentReviewConfig[];
 }
 
 function freshStore(): Store {
@@ -462,6 +474,8 @@ function freshStore(): Store {
     employeeOverrides: {},
     newEmployees: [],
     handbookEntries: [],
+    formTemplates: [],
+    deptReviewConfigs: [],
   };
 }
 
@@ -564,6 +578,7 @@ export function createEmployee(input: NewEmployeeInput): { employee: Employee } 
   store.employees.push(employee);
   store.newEmployees.push({ ...employee });
 
+  const newFormNow = new Date().toISOString();
   store.forms.push({
     id: `f-${id}`,
     cycleId: store.cycle.id,
@@ -580,7 +595,11 @@ export function createEmployee(input: NewEmployeeInput): { employee: Employee } 
     rankingOverrideReason: "",
     status: "goal_setting",
     signatures: {},
-    history: [{ at: new Date().toISOString(), actor: "人資", action: "建立人員與考核表" }],
+    history: [{ at: newFormNow, actor: "人資", action: "建立人員與考核表" }],
+    attachments: [],
+    customFieldValues: {},
+    rejectHistory: [],
+    lastStatusChangedAt: newFormNow,
   });
 
   persist();
@@ -867,11 +886,24 @@ export async function hydrateStoreFromDb(): Promise<void> {
         cycle?: AppraisalCycle;
         employeeOverrides?: Record<string, EmployeeOverride>;
         newEmployees?: Employee[];
+        formTemplates?: FormTemplate[];
+        deptReviewConfigs?: DepartmentReviewConfig[];
       };
       if (saved.newEmployees) mergeNewEmployees(base, saved.newEmployees);
-      if (saved.forms) base.forms = saved.forms;
+      if (saved.forms) {
+        // Migrate old forms that lack new fields
+        base.forms = saved.forms.map((f) => ({
+          attachments: [],
+          customFieldValues: {},
+          rejectHistory: [],
+          lastStatusChangedAt: f.history?.[f.history.length - 1]?.at ?? new Date().toISOString(),
+          ...f,
+        }));
+      }
       if (saved.cycle) base.cycle = saved.cycle;
       if (saved.employeeOverrides) applyEmployeeOverrides(base, saved.employeeOverrides);
+      if (saved.formTemplates) base.formTemplates = saved.formTemplates;
+      if (saved.deptReviewConfigs) base.deptReviewConfigs = saved.deptReviewConfigs;
     }
     globalThis.__APPRAISAL_STORE__ = base;
 
@@ -893,6 +925,8 @@ export async function persistStore(): Promise<void> {
     cycle: store.cycle,
     employeeOverrides: store.employeeOverrides,
     newEmployees: store.newEmployees,
+    formTemplates: store.formTemplates,
+    deptReviewConfigs: store.deptReviewConfigs,
   });
   await ensureTable();
   await getPool().query(
@@ -1083,6 +1117,139 @@ function formatBytes(bytes: number): string {
 
 export function allForms(): AppraisalForm[] {
   return getStore().forms;
+}
+
+// ---------- Form attachments ----------
+
+export function addFormAttachment(formId: string, attachment: FormAttachment): { ok: true } | { error: string } {
+  const form = getForm(formId);
+  if (!form) return { error: "找不到表單" };
+  if (!form.attachments) form.attachments = [];
+  form.attachments.push(attachment);
+  persist();
+  return { ok: true };
+}
+
+export function deleteFormAttachment(
+  formId: string,
+  attachmentId: string,
+  userId: string,
+  isHrAdmin: boolean
+): { ok: true } | { error: string } {
+  const form = getForm(formId);
+  if (!form) return { error: "找不到表單" };
+  const att = (form.attachments ?? []).find((a) => a.id === attachmentId);
+  if (!att) return { error: "找不到附件" };
+  if (att.uploaderId !== userId && !isHrAdmin) return { error: "無權刪除此附件" };
+  form.attachments = form.attachments.filter((a) => a.id !== attachmentId);
+  persist();
+  return { ok: true };
+}
+
+// ---------- Form templates ----------
+
+export function getTemplates(): FormTemplate[] {
+  return getStore().formTemplates;
+}
+
+export function getTemplate(id: string): FormTemplate | undefined {
+  return getStore().formTemplates.find((t) => t.id === id);
+}
+
+export function upsertTemplate(template: FormTemplate): void {
+  const store = getStore();
+  const idx = store.formTemplates.findIndex((t) => t.id === template.id);
+  if (idx >= 0) {
+    store.formTemplates[idx] = template;
+  } else {
+    store.formTemplates.push(template);
+  }
+  persist();
+}
+
+export function deleteTemplate(id: string): void {
+  const store = getStore();
+  store.formTemplates = store.formTemplates.filter((t) => t.id !== id);
+  persist();
+}
+
+/** Get templates applicable to a given employee (company + department scope). */
+export function getTemplatesForEmployee(employee: Employee): FormTemplate[] {
+  return getStore().formTemplates.filter((t) => {
+    if (t.companyId && t.companyId !== employee.companyId) return false;
+    if (t.departmentId && t.departmentId !== employee.departmentId) return false;
+    return true;
+  });
+}
+
+// ---------- Dept review config ----------
+
+export function getDeptReviewConfigs(): DepartmentReviewConfig[] {
+  return getStore().deptReviewConfigs;
+}
+
+export function getDeptReviewConfig(departmentId: string): DepartmentReviewConfig | undefined {
+  return getStore().deptReviewConfigs.find((c) => c.departmentId === departmentId);
+}
+
+export function upsertDeptReviewConfig(config: DepartmentReviewConfig): void {
+  const store = getStore();
+  const idx = store.deptReviewConfigs.findIndex((c) => c.departmentId === config.departmentId);
+  if (idx >= 0) {
+    store.deptReviewConfigs[idx] = config;
+  } else {
+    store.deptReviewConfigs.push(config);
+  }
+  persist();
+}
+
+/** Update a single employee's reviewer assignments (individual hierarchy override). */
+export function updateEmployeeReviewers(
+  employeeId: string,
+  primaryReviewerId: string | null,
+  secondaryReviewerId: string | null
+): { ok: true } | { error: string } {
+  const store = getStore();
+  const emp = store.employees.find((e) => e.id === employeeId);
+  if (!emp) return { error: "找不到員工" };
+  emp.primaryReviewerId = primaryReviewerId;
+  emp.secondaryReviewerId = secondaryReviewerId;
+  persist();
+  persistEmployee(emp);
+  return { ok: true };
+}
+
+/** Returns forms that have been stuck in a non-terminal status for >= staleThresholdDays. */
+export function getPendingStaleReminders(staleThresholdDays = 3): Array<{
+  form: AppraisalForm;
+  daysStale: number;
+  assigneeId: string;
+}> {
+  const STALE_STATUSES: FormStatus[] = ["self", "primary", "secondary", "hr_review"];
+  const now = Date.now();
+  const results: Array<{ form: AppraisalForm; daysStale: number; assigneeId: string }> = [];
+
+  for (const form of getStore().forms) {
+    if (!STALE_STATUSES.includes(form.status)) continue;
+    const lastChange = form.lastStatusChangedAt ? new Date(form.lastStatusChangedAt).getTime() : 0;
+    const daysStale = Math.floor((now - lastChange) / 86_400_000);
+    if (daysStale < staleThresholdDays) continue;
+
+    const emp = getEmployee(form.employeeId);
+    if (!emp) continue;
+
+    let assigneeId: string | null = null;
+    if (form.status === "self") assigneeId = form.employeeId;
+    else if (form.status === "primary") assigneeId = emp.primaryReviewerId;
+    else if (form.status === "secondary") assigneeId = emp.secondaryReviewerId;
+    else if (form.status === "hr_review") {
+      // find any HR admin
+      assigneeId = getStore().employees.find((e) => e.isHrAdmin)?.id ?? null;
+    }
+
+    if (assigneeId) results.push({ form, daysStale, assigneeId });
+  }
+  return results;
 }
 
 // ---------- Scoring logic ----------

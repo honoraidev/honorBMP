@@ -5,6 +5,7 @@ import {
   formsAsPrimary,
   formsAsSecondary,
   allForms,
+  getPendingStaleReminders,
 } from "./store";
 import type { Reminder, ReminderLevel } from "./reminder-types";
 
@@ -104,6 +105,25 @@ export function getRemindersForUser(user: Employee): Reminder[] {
         "/approve",
         p.hrDeadline
       );
+    }
+  }
+
+  // 滯留催簽：在某階段停留 3+ 天且此 user 是對應的待辦人
+  const staleItems = getPendingStaleReminders(3).filter((s) => s.assigneeId === user.id);
+  for (const stale of staleItems) {
+    const empName = getStore().employees.find((e) => e.id === stale.form.employeeId)?.name ?? "";
+    const staleId = `stale-${stale.form.id}`;
+    // 不重複加（已在上面的「待初評/複評」中涵蓋時，補一個額外警示）
+    if (!out.some((r) => r.id === staleId)) {
+      out.push({
+        id: staleId,
+        level: "overdue",
+        title: `【催簽】${empName} 的考核表已滯留 ${stale.daysStale} 天`,
+        detail: `表單目前在「${stale.form.status}」階段，逾 ${stale.daysStale} 天未異動，請盡速處理。`,
+        href: `/form/${stale.form.id}`,
+        dueDate: p.hrDeadline,
+        daysLeft: -stale.daysStale,
+      });
     }
   }
 

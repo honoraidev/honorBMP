@@ -13,19 +13,32 @@ import {
   departmentEmployeeCount,
   allForms,
   STATUS_LABEL,
+  getTemplatesForEmployee,
 } from "@/lib/store";
-import { getViewerContext } from "@/lib/permissions";
-import { FIXED_ITEM_DEFS, RankingTier } from "@/lib/types";
+import { getViewerContext, REJECTABLE_STATUS_SEQUENCE, STATUS_REJECT_LABEL } from "@/lib/permissions";
+import { FIXED_ITEM_DEFS, RankingTier, FormStatus } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import TierRadioGroup from "@/components/TierRadioGroup";
 import RankingPicker from "@/components/RankingPicker";
-import { saveSelf, savePrimary, saveSecondary, returnStage, hrForward, approveForm } from "../actions";
+import {
+  saveSelf,
+  savePrimary,
+  saveSecondary,
+  returnStage,
+  hrForward,
+  approveForm,
+  uploadAttachment,
+  removeAttachment,
+} from "../actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   self_incomplete: "無法送出：請完成全部9項評分，且第1–4項配分總和須為75分。",
   primary_incomplete: "無法送出：請完成全部9項初評評分。",
   secondary_incomplete: "無法送出：請選擇排名等第後再送出。",
   return_reason_required: "退回前請填寫退回原因。",
+  attachment_too_large: "附件過大（上限 10MB）。",
+  attachment_invalid: "附件無效，請重新選擇。",
+  no_permission: "您沒有執行此操作的權限。",
 };
 
 const DEV_OPTIONS = [
@@ -84,6 +97,19 @@ export default async function FormDetailPage({
     : ctx.canEditPrimary
     ? "送出初評（電子簽署）"
     : "送出複評（電子簽署）";
+
+  // 適用的自訂欄位模板
+  const templates = getTemplatesForEmployee(employee);
+  const allCustomFields = templates.flatMap((t) => t.fields).sort((a, b) => a.order - b.order);
+
+  // 判斷哪些自訂欄位在當前階段可編輯
+  const currentStageForEdit = ctx.canEditSelf ? "self" : ctx.canEditPrimary ? "primary" : ctx.canEditSecondary ? "secondary" : null;
+
+  // 可退回的目標步驟列表
+  const currentStatusIdx = REJECTABLE_STATUS_SEQUENCE.indexOf(form.status);
+  const rejectableTargets = REJECTABLE_STATUS_SEQUENCE.slice(0, currentStatusIdx);
+
+  const attachments = form.attachments ?? [];
 
   const mainContent = (
     <>
@@ -244,6 +270,62 @@ export default async function FormDetailPage({
         </div>
       </section>
 
+      {/* Section: 自訂欄位 */}
+      {allCustomFields.length > 0 && (
+        <section className="card p-5 space-y-4">
+          <SectionTitle title="自訂評核欄位" hint="由表單管理員設定的額外評核項目" />
+          {allCustomFields.map((field) => {
+            const isEditable = currentStageForEdit === field.targetStage;
+            const savedValue = form.customFieldValues?.[field.id] ?? "";
+            return (
+              <div key={field.id} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="font-medium text-sm">{field.label}</span>
+                  {field.required && <span className="text-red-500 text-xs">*必填</span>}
+                  <span className="text-xs text-gray-400 ml-auto">
+                    {field.targetStage === "self" ? "員工填寫" : field.targetStage === "primary" ? "初評主管填寫" : "複評主管填寫"}
+                  </span>
+                </div>
+                {field.hint && <p className="text-xs text-gray-400 mb-2">{field.hint}</p>}
+                {isEditable ? (
+                  <>
+                    {field.type === "textarea" && (
+                      <textarea className="textarea" name={`custom_${field.id}`} defaultValue={savedValue} rows={3} required={field.required} />
+                    )}
+                    {field.type === "text" && (
+                      <input className="input" name={`custom_${field.id}`} defaultValue={savedValue} required={field.required} />
+                    )}
+                    {field.type === "number" && (
+                      <input className="input w-40" type="number" name={`custom_${field.id}`} defaultValue={savedValue} required={field.required} />
+                    )}
+                    {field.type === "select" && (
+                      <select className="select" name={`custom_${field.id}`} defaultValue={savedValue} required={field.required}>
+                        <option value="">請選擇</option>
+                        {(field.options ?? []).map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    )}
+                    {field.type === "radio" && (
+                      <div className="flex flex-wrap gap-3">
+                        {(field.options ?? []).map((opt) => (
+                          <label key={opt} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                            <input type="radio" name={`custom_${field.id}`} value={opt} defaultChecked={savedValue === opt} required={field.required} />
+                            {opt}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-600">{savedValue || <span className="text-gray-400">（尚未填寫）</span>}</p>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+
       {activeAction && (
         <div className="card p-5 flex flex-wrap gap-2">
           <button type="submit" name="mode" value="draft" className="btn btn-outline">
@@ -284,6 +366,22 @@ export default async function FormDetailPage({
             </div>
             <div className="text-xs text-gray-400">目前合計分數</div>
           </div>
+          {/* 匯出按鈕 */}
+          <div className="flex gap-2">
+            <a
+              href={`/api/form/${formId}/pdf`}
+              target="_blank"
+              className="btn btn-outline text-xs"
+            >
+              列印 PDF
+            </a>
+            <a
+              href={`/api/form/${formId}/docx`}
+              className="btn btn-outline text-xs"
+            >
+              匯出 Word
+            </a>
+          </div>
         </div>
       </div>
 
@@ -301,6 +399,58 @@ export default async function FormDetailPage({
       ) : (
         <div className="space-y-6">{mainContent}</div>
       )}
+
+      {/* 附件區塊 */}
+      <section className="card p-5 space-y-4">
+        <SectionTitle title="主管附件上傳" hint="初評/複評主管可上傳相關佐證資料" />
+
+        {/* 現有附件列表 */}
+        {attachments.length > 0 ? (
+          <ul className="divide-y divide-gray-100">
+            {attachments.map((att) => (
+              <li key={att.id} className="py-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-lg">📎</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{att.fileName}</p>
+                    <p className="text-xs text-gray-400">
+                      {att.fileSize}・{att.uploaderName}・
+                      {new Date(att.uploadedAt).toLocaleString("zh-TW")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* 下載連結 */}
+                  <a
+                    href={`data:${att.fileMime};base64,${att.fileData}`}
+                    download={att.fileName}
+                    className="text-navy text-xs hover:underline"
+                  >
+                    下載
+                  </a>
+                  {/* 刪除（上傳者或 HR 可刪） */}
+                  {(att.uploaderId === user.id || user.isHrAdmin) && (
+                    <form action={removeAttachment}>
+                      <input type="hidden" name="formId" value={form.id} />
+                      <input type="hidden" name="attachmentId" value={att.id} />
+                      <button type="submit" className="text-red-500 text-xs hover:underline">
+                        刪除
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-400">尚無附件</p>
+        )}
+
+        {/* 上傳表單：只有有權限的主管可看到 */}
+        {ctx.canUploadAttachment && (
+          <AttachmentUploadForm formId={form.id} />
+        )}
+      </section>
 
       {/* Cross-role actions */}
       <div className="space-y-3">
@@ -322,9 +472,23 @@ export default async function FormDetailPage({
         )}
         {ctx.canReturn && (
           <details className="card p-5">
-            <summary className="text-sm text-red-600 cursor-pointer select-none">退回上一階段…</summary>
-            <form action={returnStage} className="mt-3 space-y-2">
+            <summary className="text-sm text-red-600 cursor-pointer select-none">退回此表單…</summary>
+            <form action={returnStage} className="mt-3 space-y-3">
               <input type="hidden" name="formId" value={form.id} />
+              {/* 指定退回目標步驟 */}
+              {rejectableTargets.length > 0 && (
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">退回到哪個步驟（預設：退回上一步）</label>
+                  <select className="select" name="targetStep">
+                    <option value="">退回上一步（{STATUS_LABEL[REJECTABLE_STATUS_SEQUENCE[currentStatusIdx - 1] as FormStatus] ?? "上一步"}）</option>
+                    {rejectableTargets.map((s) => (
+                      <option key={s} value={s}>
+                        {STATUS_REJECT_LABEL[s]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <textarea className="textarea" name="reason" rows={2} placeholder="請填寫退回原因（必填）" required />
               <button type="submit" className="btn btn-outline !text-red-600 !border-red-200 hover:!bg-red-50">
                 確認退回
@@ -336,6 +500,22 @@ export default async function FormDetailPage({
           <p className="text-sm text-gray-400 px-1">目前狀態：{STATUS_LABEL[form.status]}・無待您執行的操作。</p>
         )}
       </div>
+
+      {/* 退回歷程 */}
+      {(form.rejectHistory ?? []).length > 0 && (
+        <details className="card p-5">
+          <summary className="text-sm font-semibold cursor-pointer select-none">退回/駁回紀錄</summary>
+          <ul className="mt-3 space-y-2 text-xs text-gray-500">
+            {(form.rejectHistory ?? []).map((r, i) => (
+              <li key={i} className="border-l-2 border-red-200 pl-3">
+                <p className="text-gray-400">{new Date(r.at).toLocaleString("zh-TW")}・{r.actorName}</p>
+                <p>從「{STATUS_LABEL[r.fromStep]}」退回至「{STATUS_LABEL[r.targetStep]}」</p>
+                {r.reason && <p className="text-gray-500 mt-0.5">原因：{r.reason}</p>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       {/* History */}
       <details className="card p-5">
@@ -358,6 +538,8 @@ export default async function FormDetailPage({
   );
 }
 
+// ---------- Sub-components ----------
+
 function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="mb-4">
@@ -378,5 +560,68 @@ function ScoreTag({ label, tier }: { label: string; tier: string | null }) {
       <span className="text-gray-400">{label}：</span>
       <span className="font-medium">{tier ? map[tier] : "—"}</span>
     </span>
+  );
+}
+
+/** Client-side file picker that converts file to base64 and posts via hidden inputs. */
+function AttachmentUploadForm({ formId }: { formId: string }) {
+  const nameId = `att-name-${formId}`;
+  const mimeId = `att-mime-${formId}`;
+  const dataId = `att-data-${formId}`;
+  const labelId = `att-label-${formId}`;
+  const fileInputId = `att-file-${formId}`;
+
+  return (
+    <form action={uploadAttachment} className="border border-dashed border-gray-200 rounded-lg p-4 space-y-3">
+      <input type="hidden" name="formId" value={formId} />
+      <input type="hidden" name="fileName" id={nameId} />
+      <input type="hidden" name="fileMime" id={mimeId} />
+      <input type="hidden" name="fileData" id={dataId} />
+
+      <p className="text-xs text-gray-500">上傳佐證附件（PDF、圖片、Excel 等，上限 10MB）</p>
+
+      <div className="flex items-center gap-3">
+        <label className="cursor-pointer btn btn-outline text-xs" htmlFor={fileInputId}>
+          選擇檔案
+        </label>
+        <span className="text-xs text-gray-400" id={labelId}>未選擇任何檔案</span>
+      </div>
+
+      {/* Invisible real file input — JS handles conversion */}
+      <input
+        type="file"
+        id={fileInputId}
+        className="sr-only"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.zip"
+      />
+
+      {/* Client-side script: file → base64 */}
+      {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `(function(){
+  var el=document.getElementById(${JSON.stringify(fileInputId)});
+  if(!el)return;
+  el.addEventListener('change',function(e){
+    var f=e.target.files[0];
+    if(!f)return;
+    document.getElementById(${JSON.stringify(labelId)}).textContent=f.name;
+    document.getElementById(${JSON.stringify(nameId)}).value=f.name;
+    document.getElementById(${JSON.stringify(mimeId)}).value=f.type||'application/octet-stream';
+    var r=new FileReader();
+    r.onload=function(ev){
+      var b64=ev.target.result.split(',')[1];
+      document.getElementById(${JSON.stringify(dataId)}).value=b64;
+    };
+    r.readAsDataURL(f);
+  });
+})();`,
+        }}
+      />
+
+      <button type="submit" className="btn btn-primary text-xs">
+        上傳附件
+      </button>
+    </form>
   );
 }

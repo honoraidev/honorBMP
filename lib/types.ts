@@ -85,6 +85,88 @@ export interface HistoryEntry {
   note?: string;
 }
 
+// ---------- 主管附件 ----------
+
+export interface FormAttachment {
+  id: string;
+  uploaderName: string;
+  uploaderId: string;
+  /** 上傳時的評核階段 */
+  uploadedAtStage: FormStatus;
+  uploadedAt: string;
+  fileName: string;
+  fileMime: string;
+  fileSize: string;
+  /** base64 encoded file data */
+  fileData: string;
+}
+
+// ---------- 表單客製化 ----------
+
+export type CustomFieldType =
+  | "text"       // 單行文字
+  | "textarea"   // 多行文字
+  | "number"     // 數字
+  | "select"     // 下拉選單
+  | "radio";     // 單選
+
+/** 決定此欄位由哪個階段填寫 */
+export type CustomFieldStage = "self" | "primary" | "secondary";
+
+export interface CustomFieldDef {
+  id: string;
+  label: string;
+  type: CustomFieldType;
+  required: boolean;
+  /** 誰填寫這個欄位 */
+  targetStage: CustomFieldStage;
+  /** select / radio 的選項列表 */
+  options?: string[];
+  /** 輔助說明文字 */
+  hint?: string;
+  order: number;
+}
+
+export interface FormTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  /** 若設定，只套用於指定公司 */
+  companyId?: string;
+  /** 若設定，只套用於指定部門 */
+  departmentId?: string;
+  fields: CustomFieldDef[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------- 部門/層級設定 ----------
+
+export interface DepartmentReviewConfig {
+  departmentId: string;
+  /** 此部門的預設初評主管（覆蓋個人設定中的 primaryReviewerId） */
+  defaultPrimaryReviewerId: string | null;
+  /** 此部門的預設複評主管 */
+  defaultSecondaryReviewerId: string | null;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+// ---------- 退回紀錄（含指定目標步驟） ----------
+
+export interface RejectRecord {
+  at: string;
+  actorId: string;
+  actorName: string;
+  fromStep: FormStatus;
+  /** 退回到的目標步驟（可跨多步） */
+  targetStep: FormStatus;
+  reason: string;
+}
+
+// ---------- 評核表單 ----------
+
 export interface AppraisalForm {
   id: string;
   cycleId: string;
@@ -109,6 +191,14 @@ export interface AppraisalForm {
     approvedAt?: string;
   };
   history: HistoryEntry[];
+  /** 主管上傳的附件（初評/複評皆可） */
+  attachments: FormAttachment[];
+  /** 自訂欄位填寫值（key = CustomFieldDef.id） */
+  customFieldValues: Record<string, string>;
+  /** 每次退回的詳細紀錄，含指定目標步驟 */
+  rejectHistory: RejectRecord[];
+  /** 最後狀態異動時間（用於滯留天數計算） */
+  lastStatusChangedAt: string;
 }
 
 export const RANKING_LABELS: Record<RankingTier, string> = {

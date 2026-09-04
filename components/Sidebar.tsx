@@ -21,7 +21,9 @@ type IconName =
   | "cycle"
   | "people"
   | "approve"
-  | "book";
+  | "book"
+  | "hierarchy"
+  | "template";
 
 const ICONS: Record<IconName, ReactNode> = {
   home: <path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5" />,
@@ -72,6 +74,20 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z" />
       <path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 20.5z" />
+    </>
+  ),
+  hierarchy: (
+    <>
+      <circle cx="12" cy="5" r="2" />
+      <circle cx="5" cy="19" r="2" />
+      <circle cx="19" cy="19" r="2" />
+      <path d="M12 7v4M12 11l-5 6M12 11l5 6" />
+    </>
+  ),
+  template: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18M9 21V9" />
     </>
   ),
 };

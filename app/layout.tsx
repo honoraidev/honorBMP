@@ -34,6 +34,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         ? [
             { href: "/hr", label: "人資彙整看板", icon: "board", group: "管理" } as SidebarItem,
             { href: "/hr/employees", label: "人員管理", icon: "people", group: "管理" } as SidebarItem,
+            { href: "/hr/hierarchy", label: "層級設定", icon: "hierarchy", group: "管理" } as SidebarItem,
+            { href: "/hr/templates", label: "表單模板", icon: "template", group: "管理" } as SidebarItem,
             { href: "/hr/cycle", label: "考核週期設定", icon: "cycle", group: "管理" } as SidebarItem,
           ]
         : []),
