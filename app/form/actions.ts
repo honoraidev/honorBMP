@@ -407,3 +407,128 @@ export async function deleteGoalItemAction(formData: FormData) {
   redirect(`/form/${formId}?customized=1`);
 }
 
+/** 主管/人資直接修訂原始表單（包含目標題目、行為指標、員工自評等第與回饋內容） */
+export async function managerModifyOriginalFormAction(formData: FormData) {
+  const user = await requireUser();
+  const formId = String(formData.get("formId"));
+  const form = getForm(formId);
+  if (!form) return;
+  const employee = getEmployee(form.employeeId);
+  if (!employee) return;
+  const ctx = getViewerContext(user, employee, form);
+
+  // 權限：初評主管、複評主管、人資管理員均可修訂
+  if (!ctx.isPrimary && !ctx.isSecondary && !ctx.isHr) {
+    redirect(`/form/${formId}?error=no_permission`);
+  }
+
+  // 1. 修訂目標項目 (Goal Items)
+  form.goalItems = form.goalItems.map((item) => {
+    const title = String(formData.get(`goal_${item.order}_title`) ?? item.title);
+    const standardDesc = String(formData.get(`goal_${item.order}_desc`) ?? item.standardDesc);
+    const weightRaw = formData.get(`goal_${item.order}_weight`);
+    const weight = weightRaw !== null ? Math.max(1, Number(weightRaw) || item.weight) : item.weight;
+    const selfTier = tierOrNull(formData.get(`goal_${item.order}_selfTier`)) ?? item.selfTier;
+    const primaryTier = tierOrNull(formData.get(`goal_${item.order}_primaryTier`)) ?? item.primaryTier;
+    return {
+      ...item,
+      title,
+      standardDesc,
+      weight,
+      selfTier,
+      primaryTier,
+    };
+  });
+
+  // 2. 修訂行為項目 (Fixed Items)
+  form.fixedItems = form.fixedItems.map((item) => {
+    const label = String(formData.get(`fixed_${item.key}_label`) ?? item.label);
+    const weightRaw = formData.get(`fixed_${item.key}_weight`);
+    const weight = weightRaw !== null ? Math.max(1, Number(weightRaw) || item.weight) : item.weight;
+    const selfTier = tierOrNull(formData.get(`fixed_${item.key}_selfTier`)) ?? item.selfTier;
+    const primaryTier = tierOrNull(formData.get(`fixed_${item.key}_primaryTier`)) ?? item.primaryTier;
+    return {
+      ...item,
+      label,
+      weight,
+      selfTier,
+      primaryTier,
+    };
+  });
+
+  // 3. 修訂員工回饋文字
+  if (formData.has("selfFeedbackGrowth")) {
+    form.selfFeedbackGrowth = String(formData.get("selfFeedbackGrowth") || "");
+  }
+  if (formData.has("selfFeedbackNextYear")) {
+    form.selfFeedbackNextYear = String(formData.get("selfFeedbackNextYear") || "");
+  }
+
+  // 4. 修訂主管意見
+  if (formData.has("primaryComment")) {
+    form.primaryComment = String(formData.get("primaryComment") || "");
+  }
+  if (formData.has("secondaryComment")) {
+    form.secondaryComment = String(formData.get("secondaryComment") || "");
+  }
+  if (formData.has("secondaryDevAssessment")) {
+    form.secondaryDevAssessment = String(formData.get("secondaryDevAssessment") || "");
+  }
+
+  const note = String(formData.get("modifyNote") || "主管修訂原始表單內容");
+  pushHistory(form, user.name, "主管修訂原始表單", note);
+  revalidatePath(`/form/${formId}`);
+  redirect(`/form/${formId}?customized=2`);
+}
+
+/** 主管/人資新增行為項目 */
+export async function addFixedItemAction(formData: FormData) {
+  const user = await requireUser();
+  const formId = String(formData.get("formId"));
+  const form = getForm(formId);
+  if (!form) return;
+  const employee = getEmployee(form.employeeId);
+  if (!employee) return;
+  const ctx = getViewerContext(user, employee, form);
+  if (!ctx.isPrimary && !ctx.isSecondary && !ctx.isHr) return;
+
+  const label = String(formData.get("label") || "").trim();
+  const weight = Number(formData.get("weight") || 5);
+  const key = `custom_bhv_${Date.now().toString(36)}`;
+
+  form.fixedItems.push({
+    key,
+    label,
+    weight,
+    selfTier: null,
+    primaryTier: null,
+  });
+
+  pushHistory(form, user.name, `新增行為指標項目「${label}」（配分 ${weight} 分）`);
+  revalidatePath(`/form/${formId}`);
+  redirect(`/form/${formId}?customized=2`);
+}
+
+/** 主管/人資刪除行為項目 */
+export async function deleteFixedItemAction(formData: FormData) {
+  const user = await requireUser();
+  const formId = String(formData.get("formId"));
+  const key = String(formData.get("key"));
+  const form = getForm(formId);
+  if (!form) return;
+  const employee = getEmployee(form.employeeId);
+  if (!employee) return;
+  const ctx = getViewerContext(user, employee, form);
+  if (!ctx.isPrimary && !ctx.isSecondary && !ctx.isHr) return;
+
+  if (form.fixedItems.length <= 1) {
+    redirect(`/form/${formId}?error=cannot_delete_all_fixed`);
+  }
+
+  form.fixedItems = form.fixedItems.filter((f) => f.key !== key);
+  pushHistory(form, user.name, `刪除行為指標項目`);
+  revalidatePath(`/form/${formId}`);
+  redirect(`/form/${formId}?customized=2`);
+}
+
+

@@ -32,6 +32,9 @@ import {
   updateGoalItemsAction,
   addGoalItemAction,
   deleteGoalItemAction,
+  managerModifyOriginalFormAction,
+  addFixedItemAction,
+  deleteFixedItemAction,
 } from "../actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -40,6 +43,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   secondary_incomplete: "無法送出：請選擇排名等第後再送出。",
   return_reason_required: "退回前請填寫退回原因。",
   cannot_delete_all_goals: "至少須保留一個目標題目。",
+  cannot_delete_all_fixed: "至少須保留一個行為指標題目。",
   attachment_too_large: "附件過大（上限 10MB）。",
   attachment_invalid: "附件無效，請重新選擇。",
   no_permission: "您沒有執行此操作的權限。",
@@ -87,6 +91,9 @@ export default async function FormDetailPage({
 
   const total = computeTotal(form);
   const weightSum = goalWeightSum(form.goalItems);
+  const fixedWeightSum = form.fixedItems.reduce((acc, i) => acc + i.weight, 0);
+
+  const isManagerOrHr = ctx.isPrimary || ctx.isSecondary || ctx.isHr;
 
   const deptForms = allForms().filter(
     (f) => getEmployee(f.employeeId)?.departmentId === employee.departmentId && f.id !== form.id
@@ -117,6 +124,189 @@ export default async function FormDetailPage({
 
   const mainContent = (
     <>
+      {/* 主管/人資專屬：全面修訂原始表單（目標、行為題、自評等第、回饋文字） */}
+      {isManagerOrHr && (
+        <details className="card p-5 border-2 border-indigo-200 bg-indigo-50/30">
+          <summary className="text-sm font-bold text-navy cursor-pointer select-none flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <span>✏️</span>
+              <span>主管直接編修原始表單（包含題目、配分、員工自評與自述）</span>
+            </span>
+            <span className="badge bg-indigo-100 text-indigo-800 text-xs font-semibold">主管修訂權限</span>
+          </summary>
+
+          <div className="mt-4 space-y-5 pt-3 border-t border-indigo-100">
+            <p className="text-xs text-gray-600 leading-relaxed">
+              主管於面談或評核過程中，若發現員工自評填寫有誤、目標定義需調整或回饋文字需修正，可直接於下方進行編修，系統將自動留存修訂稽核軌跡，無需整份退回。
+            </p>
+
+            <form action={managerModifyOriginalFormAction} className="space-y-5">
+              <input type="hidden" name="formId" value={form.id} />
+
+              {/* 1. 目標項目修訂 */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                  <h3 className="text-xs font-bold text-navy">（一）個人目標項目修訂（題目／配分／自評等第）</h3>
+                  <span className="text-xs text-gray-400">目前配分合計 {weightSum} 分</span>
+                </div>
+                <div className="space-y-3">
+                  {form.goalItems.map((item) => (
+                    <div key={item.order} className="border border-gray-100 rounded p-3 bg-gray-50/50 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-navy">第 {item.order} 題</span>
+                        <div className="flex items-center gap-4 text-xs">
+                          <label className="flex items-center gap-1">
+                            <span>配分：</span>
+                            <input
+                              type="number"
+                              name={`goal_${item.order}_weight`}
+                              defaultValue={item.weight}
+                              min={1}
+                              max={75}
+                              className="input w-16 text-center text-xs py-1"
+                            />
+                            <span>分</span>
+                          </label>
+                          <label className="flex items-center gap-1">
+                            <span>員工自評：</span>
+                            <select name={`goal_${item.order}_selfTier`} defaultValue={item.selfTier ?? ""} className="select text-xs py-1">
+                              <option value="">（未填）</option>
+                              <option value="exceed">超標準 (100%)</option>
+                              <option value="meet">達目標 (85%)</option>
+                              <option value="below">未達標 (60%)</option>
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                      <input
+                        name={`goal_${item.order}_title`}
+                        defaultValue={item.title}
+                        placeholder="題目標題"
+                        className="input text-xs w-full"
+                        required
+                      />
+                      <textarea
+                        name={`goal_${item.order}_desc`}
+                        defaultValue={item.standardDesc}
+                        rows={2}
+                        placeholder="達標定義說明"
+                        className="textarea text-xs w-full"
+                        required
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. 行為項目修訂 */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                  <h3 className="text-xs font-bold text-navy">（二）公司行為項目修訂（名稱／配分／自評等第）</h3>
+                  <span className="text-xs text-gray-400">目前配分合計 {fixedWeightSum} 分</span>
+                </div>
+                <div className="space-y-3">
+                  {form.fixedItems.map((item, idx) => (
+                    <div key={item.key} className="border border-gray-100 rounded p-3 bg-gray-50/50 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-navy">行為指標 #{idx + 1}</span>
+                        <div className="flex items-center gap-4 text-xs">
+                          <label className="flex items-center gap-1">
+                            <span>配分：</span>
+                            <input
+                              type="number"
+                              name={`fixed_${item.key}_weight`}
+                              defaultValue={item.weight}
+                              min={1}
+                              max={50}
+                              className="input w-16 text-center text-xs py-1"
+                            />
+                            <span>分</span>
+                          </label>
+                          <label className="flex items-center gap-1">
+                            <span>員工自評：</span>
+                            <select name={`fixed_${item.key}_selfTier`} defaultValue={item.selfTier ?? ""} className="select text-xs py-1">
+                              <option value="">（未填）</option>
+                              <option value="exceed">超標準 (5分)</option>
+                              <option value="meet">達目標 (3分)</option>
+                              <option value="below">未達標 (1分)</option>
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                      <input
+                        name={`fixed_${item.key}_label`}
+                        defaultValue={item.label}
+                        placeholder="行為指標名稱"
+                        className="input text-xs w-full"
+                        required
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. 員工回饋自述修訂 */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+                <h3 className="text-xs font-bold text-navy border-b border-gray-100 pb-2">（三）員工意見回饋自述修訂</h3>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">年度成長與改進需求：</label>
+                  <textarea name="selfFeedbackGrowth" defaultValue={form.selfFeedbackGrowth} rows={2} className="textarea text-xs w-full" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">明年度工作重點與目標展望：</label>
+                  <textarea name="selfFeedbackNextYear" defaultValue={form.selfFeedbackNextYear} rows={2} className="textarea text-xs w-full" />
+                </div>
+              </div>
+
+              {/* 4. 修訂原因與存檔按鈕 */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+                <label className="text-xs font-semibold text-gray-700 block mb-1">修訂原因／備註說明（記入稽核紀錄）：</label>
+                <input
+                  name="modifyNote"
+                  placeholder="例：主管面談後針對工作目標項目及自評等第進行協商修正"
+                  className="input text-xs w-full"
+                  required
+                />
+                <div className="pt-2">
+                  <button type="submit" className="btn btn-primary text-xs py-2 px-5">
+                    💾 儲存主管修訂內容（同步更新表單與稽核紀錄）
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* 新增/刪除行為項目輔助工具 */}
+            <div className="border-t border-indigo-100 pt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <form action={addFixedItemAction} className="flex items-center gap-2">
+                <input type="hidden" name="formId" value={form.id} />
+                <input name="label" placeholder="新增行為指標題目名稱" className="input text-xs py-1 px-2.5 w-44" required />
+                <input type="number" name="weight" defaultValue="5" min={1} max={25} className="input text-xs py-1 px-2 w-14 text-center" required />
+                <span>分</span>
+                <button type="submit" className="btn btn-outline text-xs py-1 px-2.5">
+                  ➕ 新增行為題目
+                </button>
+              </form>
+
+              {form.fixedItems.length > 1 && (
+                <form action={deleteFixedItemAction} className="flex items-center gap-2">
+                  <input type="hidden" name="formId" value={form.id} />
+                  <select name="key" className="select text-xs py-1 px-2 w-36">
+                    {form.fixedItems.map((f, i) => (
+                      <option key={f.key} value={f.key}>
+                        刪除 #{i + 1} {f.label.slice(0, 6)}...
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit" className="btn btn-outline !text-red-600 !border-red-200 hover:!bg-red-50 text-xs py-1 px-2.5">
+                    🗑️ 刪除指標
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        </details>
+      )}
+
       {/* Section: goal items 1-4 */}
       <section className="card p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-3">
@@ -134,7 +324,7 @@ export default async function FormDetailPage({
         {ctx.canCustomizeForm && (
           <details className="bg-slate-50 border border-slate-200 rounded-lg p-4">
             <summary className="text-sm font-bold text-navy cursor-pointer select-none flex items-center justify-between">
-              <span>⚙️ 主管客製化題目與分數配分（點此展開管理題目）</span>
+              <span>⚙️ 客製化目標題目與分數配分（點此展開快速設定）</span>
               <span className="text-xs text-teal font-normal">主管/人資權限可用</span>
             </summary>
 
@@ -283,20 +473,20 @@ export default async function FormDetailPage({
 
       {/* Section: fixed items 5-9 */}
       <section className="card p-5">
-        <SectionTitle title="考核評分（二）公司統一行為項目" hint="第5–9項，各5分，合計占25分" />
+        <SectionTitle title="考核評分（二）公司統一行為項目" hint="共通職能行為指標，合計占25分" />
         <div className="grid md:grid-cols-2 gap-4">
           {form.fixedItems.map((item) => {
-            const def = FIXED_ITEM_DEFS.find((d) => d.key === item.key)!;
+            const def = FIXED_ITEM_DEFS.find((d) => d.key === item.key);
             return (
               <div key={item.key} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-semibold text-sm">{item.label}</span>
-                  <span className="text-xs text-gray-400">得分 {fixedItemScore(item)} 分</span>
+                  <span className="text-xs text-gray-400">配分 {item.weight} 分・得分 {fixedItemScore(item)} 分</span>
                 </div>
                 {ctx.canEditSelf ? (
-                  <TierRadioGroup name={`fixed_${item.key}_Tier`} defaultValue={item.selfTier} descriptions={def.desc} />
+                  <TierRadioGroup name={`fixed_${item.key}_Tier`} defaultValue={item.selfTier} descriptions={def?.desc} />
                 ) : ctx.canEditPrimary ? (
-                  <TierRadioGroup name={`fixed_${item.key}_Tier`} defaultValue={item.primaryTier} descriptions={def.desc} compareLabel="員工自評" compareValue={item.selfTier} />
+                  <TierRadioGroup name={`fixed_${item.key}_Tier`} defaultValue={item.primaryTier} descriptions={def?.desc} compareLabel="員工自評" compareValue={item.selfTier} />
                 ) : (
                   <div className="flex gap-3">
                     <ScoreTag label="自評" tier={item.selfTier} />
@@ -482,9 +672,14 @@ export default async function FormDetailPage({
 
   return (
     <div className="space-y-6">
-      {customized && (
+      {customized === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
           <span>✅ 目標題目與分數配分已成功更新！</span>
+        </div>
+      )}
+      {customized === "2" && (
+        <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
+          <span>✏️ 主管已成功修訂原始表單內容，並已同步記錄至稽核歷程！</span>
         </div>
       )}
       {error && (

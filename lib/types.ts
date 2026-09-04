@@ -60,9 +60,9 @@ export interface GoalItem {
 }
 
 export interface FixedItem {
-  key: "attendance" | "org" | "integrity" | "attitude" | "communication";
+  key: string;
   label: string;
-  weight: number; // always 5
+  weight: number; // 基準 5 分或自訂配分
   selfTier: Tier | null;
   primaryTier: Tier | null;
 }
