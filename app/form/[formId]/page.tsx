@@ -14,6 +14,7 @@ import {
   allForms,
   STATUS_LABEL,
   getTemplatesForEmployee,
+  getTemplates,
 } from "@/lib/store";
 import { getViewerContext, REJECTABLE_STATUS_SEQUENCE, STATUS_REJECT_LABEL } from "@/lib/permissions";
 import { FIXED_ITEM_DEFS, RankingTier, FormStatus } from "@/lib/types";
@@ -35,6 +36,9 @@ import {
   managerModifyOriginalFormAction,
   addFixedItemAction,
   deleteFixedItemAction,
+  applyTemplateToFormAction,
+  saveFormAsTemplateAction,
+  dispatchFormAction,
 } from "../actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -70,10 +74,10 @@ export default async function FormDetailPage({
   searchParams,
 }: {
   params: Promise<{ formId: string }>;
-  searchParams: Promise<{ error?: string; customized?: string }>;
+  searchParams: Promise<{ error?: string; customized?: string; dispatched?: string }>;
 }) {
   const { formId } = await params;
-  const { error, customized } = await searchParams;
+  const { error, customized, dispatched } = await searchParams;
   const user = await getCurrentEmployee();
   if (!user) redirect("/login");
 
@@ -94,6 +98,7 @@ export default async function FormDetailPage({
   const fixedWeightSum = form.fixedItems.reduce((acc, i) => acc + i.weight, 0);
 
   const isManagerOrHr = ctx.isPrimary || ctx.isSecondary || ctx.isHr;
+  const allTemplates = getTemplates();
 
   const deptForms = allForms().filter(
     (f) => getEmployee(f.employeeId)?.departmentId === employee.departmentId && f.id !== form.id
@@ -672,6 +677,21 @@ export default async function FormDetailPage({
 
   return (
     <div className="space-y-6">
+      {dispatched === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
+          <span>🚀 考核表已成功派發給員工「{employee.name}」進行期初確認與填寫自評！</span>
+        </div>
+      )}
+      {customized === "template_applied" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
+          <span>📋 已成功套用範本題目與配分設定！</span>
+        </div>
+      )}
+      {customized === "template_saved" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
+          <span>💾 已成功將此表單題目與配分存為新範本！</span>
+        </div>
+      )}
       {customized === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
           <span>✅ 目標題目與分數配分已成功更新！</span>
@@ -696,6 +716,11 @@ export default async function FormDetailPage({
           </h1>
           <p className="text-xs text-gray-500 mt-1">
             工號 {employee.employeeNo}・到職日 {employee.hireDate}
+            {form.dispatchedAt && (
+              <span className="ml-2 text-teal font-medium">
+                ・主管於 {new Date(form.dispatchedAt).toLocaleDateString("zh-TW")} 派發
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -709,6 +734,69 @@ export default async function FormDetailPage({
           </div>
         </div>
       </div>
+
+      {/* 主管範本套用與派發作業列 */}
+      {isManagerOrHr && (
+        <div className="card p-4 bg-slate-50 border border-slate-200 space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+              <span className="text-xs font-bold text-navy uppercase tracking-wider block">主管表單設定與派發作業</span>
+              <p className="text-xs text-gray-500 mt-0.5">
+                主管可先套用原有範本或自訂題目，確認後派發給員工填寫。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 套用範本 Form */}
+              <form action={applyTemplateToFormAction} className="flex items-center gap-1.5">
+                <input type="hidden" name="formId" value={form.id} />
+                <select name="templateId" required className="select text-xs py-1.5 px-2.5 max-w-[200px]" defaultValue="">
+                  <option value="" disabled>選擇要套用的範本...</option>
+                  {allTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                <button type="submit" className="btn btn-outline text-xs py-1.5 px-3 whitespace-nowrap">
+                  📋 套用範本
+                </button>
+              </form>
+
+              {/* 派發表單 Form */}
+              {form.status === "goal_setting" && (
+                <form action={dispatchFormAction}>
+                  <input type="hidden" name="formId" value={form.id} />
+                  <button type="submit" className="btn btn-teal text-xs py-1.5 px-3.5 font-bold shadow-sm whitespace-nowrap">
+                    🚀 確認設定並派發給員工
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+
+          {/* 另存為新範本 */}
+          <details className="text-xs text-gray-600 pt-2 border-t border-slate-200">
+            <summary className="cursor-pointer select-none font-semibold text-navy hover:underline inline-block">
+              💾 將這份表單的題目與配分另存為新範本...
+            </summary>
+            <form action={saveFormAsTemplateAction} className="mt-2.5 flex flex-wrap items-center gap-2">
+              <input type="hidden" name="formId" value={form.id} />
+              <input
+                name="templateName"
+                placeholder="輸入新範本名稱（例：2026 研發專案指標範本）"
+                className="input text-xs py-1 px-2.5 w-64"
+                required
+              />
+              <select name="scope" className="select text-xs py-1 px-2">
+                <option value="dept">限定本部門適用</option>
+                <option value="company">限定全公司適用</option>
+                <option value="all">通用範本</option>
+              </select>
+              <button type="submit" className="btn btn-primary text-xs py-1 px-3">
+                確認另存新範本
+              </button>
+            </form>
+          </details>
+        </div>
+      )}
 
       {form.returnReason && (
         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3">

@@ -102,3 +102,79 @@ export async function deleteField(formData: FormData) {
   revalidatePath(`/hr/templates/${templateId}`);
   redirect(`/hr/templates/${templateId}`);
 }
+
+/** 更新範本內的預設目標題目與配分 */
+export async function updateTemplateGoalsAction(formData: FormData) {
+  await requireManagerOrHr();
+  const templateId = String(formData.get("templateId"));
+  const template = getTemplate(templateId);
+  if (!template) redirect("/hr/templates");
+
+  const currentGoals = template.goalItems || [];
+  template.goalItems = currentGoals.map((item) => {
+    const title = String(formData.get(`goal_${item.order}_title`) ?? item.title);
+    const standardDesc = String(formData.get(`goal_${item.order}_desc`) ?? item.standardDesc);
+    const weightRaw = formData.get(`goal_${item.order}_weight`);
+    const weight = weightRaw !== null ? Math.max(1, Number(weightRaw) || item.weight) : item.weight;
+    return {
+      order: item.order,
+      title,
+      standardDesc,
+      weight,
+    };
+  });
+
+  template.updatedAt = new Date().toISOString();
+  upsertTemplate(template);
+  revalidatePath(`/hr/templates/${templateId}`);
+  redirect(`/hr/templates/${templateId}?saved=goals`);
+}
+
+/** 於範本中新增一項目標題目 */
+export async function addTemplateGoalAction(formData: FormData) {
+  await requireManagerOrHr();
+  const templateId = String(formData.get("templateId"));
+  const template = getTemplate(templateId);
+  if (!template) redirect("/hr/templates");
+
+  if (!template.goalItems) template.goalItems = [];
+  const nextOrder = template.goalItems.length + 1;
+  const title = String(formData.get("title") || "").trim();
+  const standardDesc = String(formData.get("standardDesc") || "").trim();
+  const weight = Number(formData.get("weight") || 15);
+
+  template.goalItems.push({
+    order: nextOrder,
+    title,
+    standardDesc,
+    weight,
+  });
+
+  template.updatedAt = new Date().toISOString();
+  upsertTemplate(template);
+  revalidatePath(`/hr/templates/${templateId}`);
+  redirect(`/hr/templates/${templateId}?saved=goal_added`);
+}
+
+/** 於範本中刪除一項目標題目 */
+export async function deleteTemplateGoalAction(formData: FormData) {
+  await requireManagerOrHr();
+  const templateId = String(formData.get("templateId"));
+  const order = Number(formData.get("order"));
+  const template = getTemplate(templateId);
+  if (!template) redirect("/hr/templates");
+
+  if (!template.goalItems || template.goalItems.length <= 1) {
+    redirect(`/hr/templates/${templateId}?error=cannot_delete_all_goals`);
+  }
+
+  template.goalItems = template.goalItems
+    .filter((g) => g.order !== order)
+    .map((g, idx) => ({ ...g, order: idx + 1 }));
+
+  template.updatedAt = new Date().toISOString();
+  upsertTemplate(template);
+  revalidatePath(`/hr/templates/${templateId}`);
+  redirect(`/hr/templates/${templateId}?saved=goal_deleted`);
+}
+

@@ -531,4 +531,84 @@ export async function deleteFixedItemAction(formData: FormData) {
   redirect(`/form/${formId}?customized=2`);
 }
 
+/** 主管套用既有範本到該表單 */
+export async function applyTemplateToFormAction(formData: FormData) {
+  const user = await requireUser();
+  const formId = String(formData.get("formId"));
+  const templateId = String(formData.get("templateId"));
+  if (!formId || !templateId) {
+    redirect(`/form/${formId}?error=template_invalid`);
+  }
+
+  const { applyTemplateToForm } = await import("@/lib/store");
+  const res = applyTemplateToForm(formId, templateId, user.name);
+  if ("error" in res) {
+    redirect(`/form/${formId}?error=${encodeURIComponent(res.error)}`);
+  }
+
+  revalidatePath(`/form/${formId}`);
+  redirect(`/form/${formId}?customized=template_applied`);
+}
+
+/** 主管將當前表單題目與配分另存為新範本 */
+export async function saveFormAsTemplateAction(formData: FormData) {
+  const user = await requireUser();
+  const formId = String(formData.get("formId"));
+  const templateName = String(formData.get("templateName") || "").trim();
+  const scope = String(formData.get("scope") || "dept");
+
+  const form = getForm(formId);
+  if (!form) return;
+  const employee = getEmployee(form.employeeId);
+  if (!employee) return;
+
+  const companyId = scope === "dept" || scope === "company" ? employee.companyId : undefined;
+  const departmentId = scope === "dept" ? employee.departmentId : undefined;
+
+  const { saveFormAsTemplate } = await import("@/lib/store");
+  const res = saveFormAsTemplate(formId, templateName, user.name, companyId, departmentId);
+  if ("error" in res) {
+    redirect(`/form/${formId}?error=${encodeURIComponent(res.error)}`);
+  }
+
+  revalidatePath(`/form/${formId}`);
+  revalidatePath(`/hr/templates`);
+  redirect(`/form/${formId}?customized=template_saved`);
+}
+
+/** 主管確認設定並正式派發表單給員工 */
+export async function dispatchFormAction(formData: FormData) {
+  const user = await requireUser();
+  const formId = String(formData.get("formId"));
+  const { dispatchForm } = await import("@/lib/store");
+  const res = dispatchForm(formId, user.name);
+  if ("error" in res) {
+    redirect(`/form/${formId}?error=${encodeURIComponent(res.error)}`);
+  }
+
+  revalidatePath(`/form/${formId}`);
+  revalidatePath(`/`);
+  redirect(`/form/${formId}?dispatched=1`);
+}
+
+/** 主管批次套用範本並派發給多位部屬 */
+export async function batchDispatchFormsAction(formData: FormData) {
+  const user = await requireUser();
+  const templateId = String(formData.get("templateId") || "");
+  const formIds = formData.getAll("formIds").map(String).filter(Boolean);
+
+  if (formIds.length === 0) {
+    redirect(`/hr/templates?error=no_employees_selected`);
+  }
+
+  const { batchDispatchForms } = await import("@/lib/store");
+  const { count } = batchDispatchForms(templateId, formIds, user.name);
+
+  revalidatePath(`/hr/templates`);
+  revalidatePath(`/review`);
+  revalidatePath(`/`);
+  redirect(`/hr/templates?dispatchedCount=${count}`);
+}
+
+
 

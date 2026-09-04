@@ -130,6 +130,19 @@ export interface CustomFieldDef {
   order: number;
 }
 
+export interface TemplateGoalItem {
+  order: number;
+  title: string;
+  standardDesc: string;
+  weight: number;
+}
+
+export interface TemplateFixedItem {
+  key: string;
+  label: string;
+  weight: number;
+}
+
 export interface FormTemplate {
   id: string;
   name: string;
@@ -138,6 +151,11 @@ export interface FormTemplate {
   companyId?: string;
   /** 若設定，只套用於指定部門 */
   departmentId?: string;
+  /** 預設目標項目與配分 */
+  goalItems?: TemplateGoalItem[];
+  /** 預設行為指標與配分 */
+  fixedItems?: TemplateFixedItem[];
+  /** 自訂欄位/題目 */
   fields: CustomFieldDef[];
   createdBy: string;
   createdAt: string;
@@ -163,7 +181,6 @@ export interface RejectRecord {
   actorId: string;
   actorName: string;
   fromStep: FormStatus;
-  /** 退回到的目標步驟（可跨多步） */
   targetStep: FormStatus;
   reason: string;
 }
@@ -174,8 +191,8 @@ export interface AppraisalForm {
   id: string;
   cycleId: string;
   employeeId: string;
-  goalItems: GoalItem[]; // 4 items, 75 pts
-  fixedItems: FixedItem[]; // 5 items, 25 pts
+  goalItems: GoalItem[]; // items, 75 pts
+  fixedItems: FixedItem[]; // items, 25 pts
   bonusMalus: number; // item 10, -10..10
   selfFeedbackGrowth: string;
   selfFeedbackNextYear: string;
@@ -187,6 +204,9 @@ export interface AppraisalForm {
   status: FormStatus;
   returnReason?: string;
   returnedFromStatus?: FormStatus;
+  /** 主管派發標記 */
+  dispatchedAt?: string;
+  dispatchedBy?: string;
   signatures: {
     selfAt?: string;
     primaryAt?: string;

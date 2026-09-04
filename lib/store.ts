@@ -465,6 +465,73 @@ interface Store {
   deletedEmployeeIds: string[];
 }
 
+export const DEFAULT_FORM_TEMPLATES: FormTemplate[] = [
+  {
+    id: "tpl-default-general",
+    name: "集團通用標準績效範本",
+    description: "適用於全體通用同仁，包含核心工作成果、流程品質、跨組協作與自我提升四大維度",
+    goalItems: [
+      { order: 1, title: "核心業務目標與關鍵專案交付", standardDesc: "如期、如質完成年度或季度設定之專案關鍵里程碑，成果符合組織預期", weight: 20 },
+      { order: 2, title: "營運流程優化與執行效能提升", standardDesc: "精進個人與團隊作業流程，降低錯誤率，提高日常作業運作效率", weight: 20 },
+      { order: 3, title: "跨部門溝通協作與團隊支援", standardDesc: "主動與跨單位溝通協調，有效解決介面問題，支援組織重點工作", weight: 20 },
+      { order: 4, title: "專業能力精進與自我成長", standardDesc: "提升工作職能、考取專業認證或導入新方法論，帶動團隊效能", weight: 15 },
+    ],
+    fixedItems: FIXED_ITEM_DEFS.map((d) => ({ key: d.key, label: d.label, weight: 5 })),
+    fields: [],
+    createdBy: "系統預設",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "tpl-eng-tech",
+    name: "資訊研發與技術工程範本",
+    description: "適用於資訊處、研發工程、技術支援人員，著重系統架構、程式碼品質與線上穩定度",
+    goalItems: [
+      { order: 1, title: "核心系統功能開發與架構交付", standardDesc: "依產品規格如期完成系統模組開發與上線，落實軟體工程規範，降低技術負債", weight: 25 },
+      { order: 2, title: "系統可用性與線上維運穩定度", standardDesc: "系統穩定運行無重大線上故障，監控機制完善，告警及時響應處理", weight: 20 },
+      { order: 3, title: "程式碼品質、自動化測試與資安合規", standardDesc: "落實 Code Review、單元測試覆蓋率達標，遵循集團資訊安全守則", weight: 15 },
+      { order: 4, title: "技術創新探索與知識傳承沉澱", standardDesc: "調研並導入新技術框架，產出技術規格文件，促進內部技術分享", weight: 15 },
+    ],
+    fixedItems: FIXED_ITEM_DEFS.map((d) => ({ key: d.key, label: d.label, weight: 5 })),
+    fields: [],
+    createdBy: "資訊主管",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "tpl-sales-biz",
+    name: "業務拓展與市場營銷範本",
+    description: "適用於業務部、行銷推廣、客戶服務人員，著重業績指標達成、商機拓展與客戶維繫",
+    goalItems: [
+      { order: 1, title: "年度營收指標與業務目標達成率", standardDesc: "達成部門分配之個人業績營收目標 100% 以上，合約簽署進度如期", weight: 30 },
+      { order: 2, title: "新客戶商機開拓與通路深耕", standardDesc: "積極拓展潛在客戶名單，提高商機轉化率，建立長期合作夥伴關係", weight: 20 },
+      { order: 3, title: "客戶滿意度維護與客訴妥善處理", standardDesc: "客戶服務評核達標，客訴案件即時追蹤閉環，維繫品牌信譽", weight: 15 },
+      { order: 4, title: "市場情報回饋與行銷專案推動", standardDesc: "精準回報市場動態與競品分析，配合推動各季行銷宣傳活動", weight: 10 },
+    ],
+    fixedItems: FIXED_ITEM_DEFS.map((d) => ({ key: d.key, label: d.label, weight: 5 })),
+    fields: [],
+    createdBy: "業務主管",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "tpl-admin-corp",
+    name: "後勤行政與財務人資範本",
+    description: "適用於財務部、人力資源處、總務行政等後勤管理人員，著重準確度、合規性與服務支援",
+    goalItems: [
+      { order: 1, title: "日常行政與財會作業精確度與時效", standardDesc: "各項報表、帳務、考勤及行政流程 100% 準時結算且零重大差錯", weight: 25 },
+      { order: 2, title: "內部控制與法規法令遵循度", standardDesc: "嚴格落實內部控制規範與個資、勞動、稅務法規，順利通過各項稽核", weight: 20 },
+      { order: 3, title: "作業流程標準化與數位轉型推動", standardDesc: "檢視現行作業流程，提出自動化或無紙化改善專案，節省作業工時", weight: 15 },
+      { order: 4, title: "內部同仁服務支援滿意度", standardDesc: "主動積極協助各部門解決後勤與行政疑難，提供高品質支援服務", weight: 15 },
+    ],
+    fixedItems: FIXED_ITEM_DEFS.map((d) => ({ key: d.key, label: d.label, weight: 5 })),
+    fields: [],
+    createdBy: "人資處",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+];
+
 function freshStore(): Store {
   return {
     companies: COMPANIES,
@@ -476,7 +543,12 @@ function freshStore(): Store {
     employeeOverrides: {},
     newEmployees: [],
     handbookEntries: [],
-    formTemplates: [],
+    formTemplates: DEFAULT_FORM_TEMPLATES.map((t) => ({
+      ...t,
+      goalItems: t.goalItems ? [...t.goalItems] : [],
+      fixedItems: t.fixedItems ? [...t.fixedItems] : [],
+      fields: [...t.fields],
+    })),
     deptReviewConfigs: [],
     deletedEmployeeIds: [],
   };
@@ -1215,6 +1287,160 @@ export function getTemplatesForEmployee(employee: Employee): FormTemplate[] {
     if (t.departmentId && t.departmentId !== employee.departmentId) return false;
     return true;
   });
+}
+
+/** 主管將指定範本套用到單一表單 */
+export function applyTemplateToForm(
+  formId: string,
+  templateId: string,
+  actorName: string
+): { ok: true } | { error: string } {
+  const store = getStore();
+  const form = store.forms.find((f) => f.id === formId);
+  if (!form) return { error: "找不到表單" };
+  const template = store.formTemplates.find((t) => t.id === templateId);
+  if (!template) return { error: "找不到指定範本" };
+
+  if (template.goalItems && template.goalItems.length > 0) {
+    form.goalItems = template.goalItems.map((g) => ({
+      order: g.order,
+      title: g.title,
+      standardDesc: g.standardDesc,
+      weight: g.weight,
+      selfTier: null,
+      primaryTier: null,
+    }));
+  }
+
+  if (template.fixedItems && template.fixedItems.length > 0) {
+    form.fixedItems = template.fixedItems.map((f) => ({
+      key: f.key,
+      label: f.label,
+      weight: f.weight,
+      selfTier: null,
+      primaryTier: null,
+    }));
+  }
+
+  pushHistory(form, actorName, "主管套用範本", `已套用「${template.name}」題目與配分設定`);
+  persist();
+  return { ok: true };
+}
+
+/** 將現有表單之題目與配分另存為新範本 */
+export function saveFormAsTemplate(
+  formId: string,
+  templateName: string,
+  actorName: string,
+  companyId?: string,
+  departmentId?: string
+): { template: FormTemplate } | { error: string } {
+  const store = getStore();
+  const form = store.forms.find((f) => f.id === formId);
+  if (!form) return { error: "找不到表單" };
+
+  const name = templateName.trim();
+  if (!name) return { error: "請輸入範本名稱" };
+
+  const now = new Date().toISOString();
+  const id = `tpl-custom-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+
+  const template: FormTemplate = {
+    id,
+    name,
+    description: `由 ${actorName} 於 ${new Date().toLocaleDateString("zh-TW")} 自考核表存為範本`,
+    companyId: companyId || undefined,
+    departmentId: departmentId || undefined,
+    goalItems: form.goalItems.map((g) => ({
+      order: g.order,
+      title: g.title,
+      standardDesc: g.standardDesc,
+      weight: g.weight,
+    })),
+    fixedItems: form.fixedItems.map((f) => ({
+      key: f.key,
+      label: f.label,
+      weight: f.weight,
+    })),
+    fields: [],
+    createdBy: actorName,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  store.formTemplates.push(template);
+  persist();
+  return { template };
+}
+
+/** 主管確認設定並派發考核表給員工填寫自評 */
+export function dispatchForm(formId: string, actorName: string): { ok: true } | { error: string } {
+  const store = getStore();
+  const form = store.forms.find((f) => f.id === formId);
+  if (!form) return { error: "找不到表單" };
+
+  form.status = "goal_setting";
+  form.dispatchedAt = new Date().toISOString();
+  form.dispatchedBy = actorName;
+  form.lastStatusChangedAt = new Date().toISOString();
+
+  pushHistory(form, actorName, "主管確認目標並派發", "已派發給員工進行期初目標確認與自評填寫");
+  persist();
+  return { ok: true };
+}
+
+/** 主管批次套用範本並派發給多位部屬 */
+export function batchDispatchForms(
+  templateId: string,
+  formIds: string[],
+  actorName: string
+): { count: number } {
+  const store = getStore();
+  const template = store.formTemplates.find((t) => t.id === templateId);
+  let count = 0;
+
+  for (const fid of formIds) {
+    const form = store.forms.find((f) => f.id === fid);
+    if (!form) continue;
+
+    if (template) {
+      if (template.goalItems && template.goalItems.length > 0) {
+        form.goalItems = template.goalItems.map((g) => ({
+          order: g.order,
+          title: g.title,
+          standardDesc: g.standardDesc,
+          weight: g.weight,
+          selfTier: null,
+          primaryTier: null,
+        }));
+      }
+      if (template.fixedItems && template.fixedItems.length > 0) {
+        form.fixedItems = template.fixedItems.map((f) => ({
+          key: f.key,
+          label: f.label,
+          weight: f.weight,
+          selfTier: null,
+          primaryTier: null,
+        }));
+      }
+    }
+
+    form.status = "goal_setting";
+    form.dispatchedAt = new Date().toISOString();
+    form.dispatchedBy = actorName;
+    form.lastStatusChangedAt = new Date().toISOString();
+
+    pushHistory(
+      form,
+      actorName,
+      "主管批次派發考核表",
+      template ? `套用範本「${template.name}」並派發` : "確認題目並派發"
+    );
+    count++;
+  }
+
+  persist();
+  return { count };
 }
 
 // ---------- Dept review config ----------
