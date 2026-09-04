@@ -366,22 +366,6 @@ export default async function FormDetailPage({
             </div>
             <div className="text-xs text-gray-400">目前合計分數</div>
           </div>
-          {/* 匯出按鈕 */}
-          <div className="flex gap-2">
-            <a
-              href={`/api/form/${formId}/pdf`}
-              target="_blank"
-              className="btn btn-outline text-xs"
-            >
-              列印 PDF
-            </a>
-            <a
-              href={`/api/form/${formId}/docx`}
-              className="btn btn-outline text-xs"
-            >
-              匯出 Word
-            </a>
-          </div>
         </div>
       </div>
 
@@ -534,9 +518,48 @@ export default async function FormDetailPage({
             ))}
         </ul>
       </details>
+
+      {/* 匯出區塊 — 所有有檢視權限的人皆可操作 */}
+      <section className="card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="font-bold text-navy">匯出評核表</h2>
+            <p className="text-xs text-gray-400 mt-0.5">可將此評核表匯出為 PDF 或 Word 檔案</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <a
+            href={`/api/form/${formId}/pdf`}
+            target="_blank"
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6M9 13h6M9 17h6M9 9h1" />
+            </svg>
+            列印 / 儲存 PDF
+          </a>
+          <a
+            href={`/api/form/${formId}/docx`}
+            className="btn btn-outline flex items-center gap-2"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            匯出 Word (.docx)
+          </a>
+        </div>
+        <p className="text-xs text-gray-400 mt-3">
+          PDF：點擊後開新分頁 → 瀏覽器列印 → 「儲存為 PDF」<br />
+          Word：直接下載 .docx，可用 Microsoft Word 或 LibreOffice 開啟
+        </p>
+      </section>
     </div>
   );
 }
+
 
 // ---------- Sub-components ----------
 

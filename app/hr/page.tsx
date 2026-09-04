@@ -181,9 +181,17 @@ export default async function HrDashboardPage() {
                     <td className="px-3 py-2 text-right">{computeTotal(f)}</td>
                     <td className="px-3 py-2 text-center text-gray-500">{f.rankingTier || "—"}</td>
                     <td className="px-3 py-2 text-right">
-                      <Link href={`/form/${f.id}`} className="text-navy font-semibold hover:underline text-xs">
-                        檢視 →
-                      </Link>
+                      <div className="flex items-center justify-end gap-3">
+                        <Link href={`/form/${f.id}`} className="text-navy font-semibold hover:underline text-xs">
+                          檢視 →
+                        </Link>
+                        <a href={`/api/form/${f.id}/pdf`} target="_blank" className="text-gray-400 hover:text-navy text-xs">
+                          PDF
+                        </a>
+                        <a href={`/api/form/${f.id}/docx`} className="text-gray-400 hover:text-navy text-xs">
+                          Word
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 );
