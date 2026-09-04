@@ -36,11 +36,9 @@ export async function saveSelf(formData: FormData) {
   const ctx = getViewerContext(user, employee, form);
   if (!ctx.canEditSelf) return;
 
+  // 題目、達標定義與配分完全由主管/範本決定，員工自評只更新各題自評等第 selfTier
   const goalItems: GoalItem[] = form.goalItems.map((item) => ({
     ...item,
-    title: String(formData.get(`goal${item.order}Title`) ?? item.title),
-    standardDesc: String(formData.get(`goal${item.order}Desc`) ?? item.standardDesc),
-    weight: Number(formData.get(`goal${item.order}Weight`) ?? item.weight) || item.weight,
     selfTier: tierOrNull(formData.get(`goal${item.order}Tier`)),
   }));
 
@@ -65,7 +63,7 @@ export async function saveSelf(formData: FormData) {
   if (mode === "submit") {
     const weightSum = goalItems.reduce((s, i) => s + i.weight, 0);
     const allTiersFilled = [...goalItems, ...fixedItems].every((i) => i.selfTier);
-    if (weightSum !== 75 || !allTiersFilled) {
+    if (!allTiersFilled) {
       // Validation failed — keep as draft, do not advance status.
       revalidatePath(`/form/${formId}`);
       redirect(`/form/${formId}?error=self_incomplete`);
@@ -540,6 +538,15 @@ export async function applyTemplateToFormAction(formData: FormData) {
     redirect(`/form/${formId}?error=template_invalid`);
   }
 
+  const form = getForm(formId);
+  if (!form) return;
+  const employee = getEmployee(form.employeeId);
+  if (!employee) return;
+  const ctx = getViewerContext(user, employee, form);
+  if (!ctx.canCustomizeForm) {
+    redirect(`/form/${formId}?error=permission_denied`);
+  }
+
   const { applyTemplateToForm } = await import("@/lib/store");
   const res = applyTemplateToForm(formId, templateId, user.name);
   if ("error" in res) {
@@ -561,6 +568,10 @@ export async function saveFormAsTemplateAction(formData: FormData) {
   if (!form) return;
   const employee = getEmployee(form.employeeId);
   if (!employee) return;
+  const ctx = getViewerContext(user, employee, form);
+  if (!ctx.canCustomizeForm) {
+    redirect(`/form/${formId}?error=permission_denied`);
+  }
 
   const companyId = scope === "dept" || scope === "company" ? employee.companyId : undefined;
   const departmentId = scope === "dept" ? employee.departmentId : undefined;
@@ -580,6 +591,15 @@ export async function saveFormAsTemplateAction(formData: FormData) {
 export async function dispatchFormAction(formData: FormData) {
   const user = await requireUser();
   const formId = String(formData.get("formId"));
+  const form = getForm(formId);
+  if (!form) return;
+  const employee = getEmployee(form.employeeId);
+  if (!employee) return;
+  const ctx = getViewerContext(user, employee, form);
+  if (!ctx.canCustomizeForm) {
+    redirect(`/form/${formId}?error=permission_denied`);
+  }
+
   const { dispatchForm } = await import("@/lib/store");
   const res = dispatchForm(formId, user.name);
   if ("error" in res) {
@@ -594,6 +614,11 @@ export async function dispatchFormAction(formData: FormData) {
 /** 主管批次套用範本並派發給多位部屬 */
 export async function batchDispatchFormsAction(formData: FormData) {
   const user = await requireUser();
+  const { isUserDeptManager } = await import("@/lib/permissions");
+  if (!user.isHrAdmin && !isUserDeptManager(user)) {
+    redirect(`/hr/templates?error=permission_denied`);
+  }
+
   const templateId = String(formData.get("templateId") || "");
   const formIds = formData.getAll("formIds").map(String).filter(Boolean);
 

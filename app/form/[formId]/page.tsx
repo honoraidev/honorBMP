@@ -445,15 +445,15 @@ export default async function FormDetailPage({
                 </span>
               </div>
               {ctx.canEditSelf ? (
-                <div className="space-y-2">
-                  <input className="input" name={`goal${item.order}Title`} defaultValue={item.title} placeholder="項目標題（如：計價請款）" required />
-                  <textarea className="textarea" name={`goal${item.order}Desc`} defaultValue={item.standardDesc} rows={2} placeholder="達標定義（請具體化、數據化，例如：資料準時繳交，無需修正）" required />
-                  <div className="flex items-center gap-2 text-sm">
-                    <label className="text-gray-500">配分分數</label>
-                    <input className="input w-24" type="number" name={`goal${item.order}Weight`} defaultValue={item.weight} min={0} max={75} />
-                    <span className="text-gray-400 text-xs">分（目前所有題目合計 {weightSum} 分）</span>
+                <div className="space-y-3">
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-3">
+                    <p className="font-semibold text-sm text-gray-900">{item.title || <span className="text-gray-400">（主管尚未設定目標標題）</span>}</p>
+                    <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap leading-relaxed">{item.standardDesc || <span className="text-gray-400">（主管尚未設定具體達標定義）</span>}</p>
                   </div>
-                  <TierRadioGroup name={`goal${item.order}Tier`} defaultValue={item.selfTier} />
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 block mb-1">員工自評等第 *</label>
+                    <TierRadioGroup name={`goal${item.order}Tier`} defaultValue={item.selfTier} />
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-1.5">

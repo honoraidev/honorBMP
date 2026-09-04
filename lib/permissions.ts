@@ -55,12 +55,8 @@ export function getViewerContext(user: Employee, employee: Employee, form: Appra
     (isHr && form.status === "secondary") ||
     (isApprover && form.status === "hr_review");
 
-  // 主管（初評、複評）、人資，或是目標設定階段的受評人皆可客製化題目與配分
-  const canCustomizeForm =
-    isPrimary ||
-    isSecondary ||
-    isHr ||
-    (isOwner && form.status === "goal_setting");
+  // 客製化表單（題目、配分、指標增減、套用範本）：嚴格限定初評主管、複評主管、人資管理員（員工本人無客製化權限）
+  const canCustomizeForm = isPrimary || isSecondary || isHr;
 
   // 可上傳附件：初評中或複評中，對應的主管可上傳
   const canUploadAttachment =
